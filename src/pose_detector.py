@@ -41,7 +41,7 @@ class pose_detector:
             self.mp_pose.PoseLandmark.RIGHT_HIP,
         ]
 
-    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, bool, float]:
+    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float]:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.pose.process(rgb_frame)
 
@@ -49,8 +49,8 @@ class pose_detector:
             self._draw_landmarks(frame, results)
             posture_score = self._calculate_posture_score(results.pose_landmarks)
             self._draw_posture_feedback(frame, posture_score)
-            return frame, True, posture_score
-        return frame, False, 0.0
+            return frame, posture_score
+        return frame, 0.0
 
     def _draw_landmarks(self, frame: np.ndarray, results) -> None:
         self.mp_draw.draw_landmarks(
@@ -220,3 +220,15 @@ class pose_detector:
             score_color,
             2,
         )
+        if score < 60:
+            cv2.putText(
+                frame,
+                "Please sit up straight!",
+                (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 255),
+                2,
+            )
+
+        cv2.imshow("Posture Detection", frame)

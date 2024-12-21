@@ -11,21 +11,8 @@ def main():
         if not ret:
             break
 
-        frame, detected, posture_score = detector.process_frame(frame)
-
-        if detected:
-            if posture_score < 60:
-                cv2.putText(
-                    frame,
-                    "Please sit up straight!",
-                    (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 0, 255),
-                    2,
-                )
-
-        cv2.imshow("Posture Detection", frame)
+        frame, score = detector.process_frame(frame)
+        print(score)
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
