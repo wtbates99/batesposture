@@ -109,68 +109,97 @@ class pose_detector:
     def _calculate_posture_score(self, landmarks) -> float:
         def angle_between(v1, v2):
             """Calculate the angle in degrees between two vectors."""
-            dot_product = np.dot(v1, v2)
-            # Clip to handle floating point errors
-            dot_product = np.clip(dot_product, -1.0, 1.0)
-            angle_rad = np.arccos(dot_product)
-            return np.degrees(angle_rad)
+            v1_norm = v1 / np.linalg.norm(v1)
+            v2_norm = v2 / np.linalg.norm(v2)
+            dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
+            return np.degrees(np.arccos(dot_product))
 
         def get_point(landmark):
             return np.array([landmark.x, landmark.y, landmark.z])
 
-        # Get key points
+        # Get all relevant landmarks
         nose = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.NOSE])
+        left_ear = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_EAR])
+        right_ear = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_EAR])
         left_shoulder = get_point(
             landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
         )
         right_shoulder = get_point(
             landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
         )
-        left_ear = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_EAR])
-        right_ear = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_EAR])
+        left_hip = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_HIP])
+        right_hip = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_HIP])
 
+        # Calculate midpoints
         mid_shoulder = (left_shoulder + right_shoulder) / 2
         mid_ear = (left_ear + right_ear) / 2
+        mid_hip = (left_hip + right_hip) / 2
 
-        # Calculate head forward tilt
+        # 1. Head Forward Tilt (Forward Head Posture)
         head_forward_offset = nose[2] - mid_ear[2]
-        head_tilt_score = max(
-            0, 1 - abs(head_forward_offset) * 1.5
-        )  # Less strict on forward head tilt
+        head_tilt_score = max(0, 1 - abs(head_forward_offset) * 1.2)
 
-        # Calculate neck alignment
+        # 2. Neck Vertical Alignment
         neck_vector = mid_ear - mid_shoulder
-        ideal_neck_vector = np.array([0, -1, 0])  # Straight up
-        neck_angle = angle_between(
-            neck_vector / np.linalg.norm(neck_vector), ideal_neck_vector
+        ideal_neck_vector = np.array([0, -1, 0])
+        neck_angle = angle_between(neck_vector, ideal_neck_vector)
+        neck_vertical_score = max(0, 1 - abs(neck_angle) / 45)
+
+        # 3. Shoulder Level (Check if shoulders are even)
+        shoulder_height_diff = abs(left_shoulder[1] - right_shoulder[1])
+        shoulder_level_score = max(0, 1 - shoulder_height_diff * 5)
+
+        # 4. Shoulder Roll (Forward/Backward rotation)
+        shoulder_depth_diff = abs(left_shoulder[2] - right_shoulder[2])
+        shoulder_roll_score = max(0, 1 - shoulder_depth_diff * 2)
+
+        # 5. Upper Spine Alignment
+        spine_vector = mid_shoulder - mid_hip
+        ideal_spine_vector = np.array([0, -1, 0])
+        spine_angle = angle_between(spine_vector, ideal_spine_vector)
+        spine_alignment_score = max(0, 1 - abs(spine_angle) / 45)
+
+        # 6. Head Rotation (Left/Right)
+        ear_distance = np.linalg.norm(right_ear - left_ear)
+        ideal_ear_distance = np.linalg.norm(right_shoulder - left_shoulder) * 0.7
+        head_rotation_score = max(
+            0, 1 - abs(ear_distance - ideal_ear_distance) / ideal_ear_distance
         )
-        neck_score = max(
-            0, 1 - abs(neck_angle) / 45
-        )  # Less strict: penalize after 45 degrees
 
-        # Calculate ear alignment with shoulders
-        ear_shoulder_diff = abs(mid_ear[0] - mid_shoulder[0])
-        ear_alignment_score = max(
-            0, 1 - ear_shoulder_diff * 2
-        )  # Less strict on lateral alignment
+        # 7. Head Side Tilt
+        ear_height_diff = abs(left_ear[1] - right_ear[1])
+        head_side_tilt_score = max(0, 1 - ear_height_diff * 5)
 
-        # Weighted scoring with emphasis on key indicators
+        # Weighted combination of all scores
         weights = {
-            "head_tilt": 0.4,  # Forward head posture
-            "neck": 0.4,  # Neck angle
-            "ear_alignment": 0.2,  # Side tilt
+            "head_tilt": 0.2,  # Forward head posture
+            "neck_vertical": 0.2,  # Neck alignment
+            "shoulder_level": 0.15,  # Even shoulders
+            "shoulder_roll": 0.15,  # Shoulder forward/back
+            "spine": 0.15,  # Upper spine alignment
+            "head_rotation": 0.1,  # Head rotation
+            "head_side_tilt": 0.05,  # Head side tilt
         }
 
+        # Calculate final score
         final_score = (
             head_tilt_score * weights["head_tilt"]
-            + neck_score * weights["neck"]
-            + ear_alignment_score * weights["ear_alignment"]
+            + neck_vertical_score * weights["neck_vertical"]
+            + shoulder_level_score * weights["shoulder_level"]
+            + shoulder_roll_score * weights["shoulder_roll"]
+            + spine_alignment_score * weights["spine"]
+            + head_rotation_score * weights["head_rotation"]
+            + head_side_tilt_score * weights["head_side_tilt"]
         ) * 100
 
         if self.debug:
             print(f"Head Tilt Score: {head_tilt_score:.2f}")
-            print(f"Neck Score: {neck_score:.2f}")
-            print(f"Ear Alignment Score: {ear_alignment_score:.2f}")
+            print(f"Neck Vertical Score: {neck_vertical_score:.2f}")
+            print(f"Shoulder Level Score: {shoulder_level_score:.2f}")
+            print(f"Shoulder Roll Score: {shoulder_roll_score:.2f}")
+            print(f"Spine Alignment Score: {spine_alignment_score:.2f}")
+            print(f"Head Rotation Score: {head_rotation_score:.2f}")
+            print(f"Head Side Tilt Score: {head_side_tilt_score:.2f}")
 
         return min(100, max(0, final_score))
 
