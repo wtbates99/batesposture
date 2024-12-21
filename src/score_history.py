@@ -29,7 +29,7 @@ class score_history:
     def get_average_score(self):
         current_time = time()
         if not self.is_buffer_full and self.current_index == 0:
-            return 0
+            return 0.0
 
         # Calculate which entries are within the time window
         valid_mask = current_time - self.timestamps <= self.WINDOW_SIZE
@@ -40,4 +40,5 @@ class score_history:
                 valid_mask[: self.current_index]
             ]
 
-        return np.mean(valid_scores) if len(valid_scores) > 0 else 0
+        # Convert numpy.float32 to Python float
+        return float(np.mean(valid_scores)) if len(valid_scores) > 0 else 0.0
