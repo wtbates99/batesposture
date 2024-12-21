@@ -1,11 +1,17 @@
 import cv2
 import mediapipe as mp
-from typing import Tuple
 import numpy as np
+from typing import Tuple
 
 
-class PoseDetector:
-    def __init__(self, min_detection_confidence=0.5, min_tracking_confidence=0.5):
+class pose_detector:
+    def __init__(
+        self,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+        debug=False,
+    ):
+        self.debug = debug
         self.mp_pose = mp.solutions.pose
         self.mp_draw = mp.solutions.drawing_utils
         self.pose = self.mp_pose.Pose(
@@ -13,7 +19,6 @@ class PoseDetector:
             min_tracking_confidence=min_tracking_confidence,
             model_complexity=2,  # Use the most detailed model
         )
-
         self.posture_landmarks = [
             self.mp_pose.PoseLandmark.NOSE,
             self.mp_pose.PoseLandmark.LEFT_EYE_INNER,
@@ -35,8 +40,6 @@ class PoseDetector:
             self.mp_pose.PoseLandmark.LEFT_HIP,
             self.mp_pose.PoseLandmark.RIGHT_HIP,
         ]
-
-        self.debug = True
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, bool, float]:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -185,39 +188,3 @@ class PoseDetector:
             score_color,
             2,
         )
-
-
-def main():
-    cap = cv2.VideoCapture(0)
-    detector = PoseDetector()
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame, detected, posture_score = detector.process_frame(frame)
-
-        if detected:
-            if posture_score < 60:
-                cv2.putText(
-                    frame,
-                    "Please sit up straight!",
-                    (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 0, 255),
-                    2,
-                )
-
-        cv2.imshow("Posture Detection", frame)
-
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-
-
-if __name__ == "__main__":
-    main()
