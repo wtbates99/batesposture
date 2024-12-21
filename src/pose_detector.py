@@ -107,9 +107,18 @@ class pose_detector:
             )
 
     def _calculate_posture_score(self, landmarks) -> float:
+        def angle_between(v1, v2):
+            """Calculate the angle in degrees between two vectors."""
+            dot_product = np.dot(v1, v2)
+            # Clip to handle floating point errors
+            dot_product = np.clip(dot_product, -1.0, 1.0)
+            angle_rad = np.arccos(dot_product)
+            return np.degrees(angle_rad)
+
         def get_point(landmark):
             return np.array([landmark.x, landmark.y, landmark.z])
 
+        # Get key points
         nose = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.NOSE])
         left_shoulder = get_point(
             landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
@@ -117,57 +126,51 @@ class pose_detector:
         right_shoulder = get_point(
             landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
         )
-        left_hip = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_HIP])
-        right_hip = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_HIP])
         left_ear = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_EAR])
         right_ear = get_point(landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_EAR])
 
         mid_shoulder = (left_shoulder + right_shoulder) / 2
-        mid_hip = (left_hip + right_hip) / 2
         mid_ear = (left_ear + right_ear) / 2
 
-        spine_vector = mid_shoulder - mid_hip
+        # Calculate head forward tilt
+        head_forward_offset = nose[2] - mid_ear[2]
+        head_tilt_score = max(
+            0, 1 - abs(head_forward_offset) * 1.5
+        )  # Less strict on forward head tilt
+
+        # Calculate neck alignment
         neck_vector = mid_ear - mid_shoulder
-
-        spine_vector = spine_vector / np.linalg.norm(spine_vector)
-        neck_vector = neck_vector / np.linalg.norm(neck_vector)
-
-        def angle_between(v1, v2):
-            dot_product = np.dot(v1, v2)
-            dot_product = np.clip(dot_product, -1.0, 1.0)
-            return np.degrees(np.arccos(dot_product))
-
-        vertical_vector = np.array([0, -1, 0])
-        spine_vertical_angle = angle_between(spine_vector, vertical_vector)
-        vertical_score = max(
-            0, 1 - abs(spine_vertical_angle) / 45
-        )  # Allow 45 degree deviation
-
-        neck_angle = angle_between(spine_vector, neck_vector)
+        ideal_neck_vector = np.array([0, -1, 0])  # Straight up
+        neck_angle = angle_between(
+            neck_vector / np.linalg.norm(neck_vector), ideal_neck_vector
+        )
         neck_score = max(
-            0, 1 - abs(neck_angle - 25) / 45
-        )  # Ideal neck angle ~25 degrees
+            0, 1 - abs(neck_angle) / 45
+        )  # Less strict: penalize after 45 degrees
 
-        shoulder_diff = abs(left_shoulder[1] - right_shoulder[1])
-        symmetry_score = max(0, 1 - shoulder_diff * 5)
+        # Calculate ear alignment with shoulders
+        ear_shoulder_diff = abs(mid_ear[0] - mid_shoulder[0])
+        ear_alignment_score = max(
+            0, 1 - ear_shoulder_diff * 2
+        )  # Less strict on lateral alignment
 
-        forward_offset = nose[2] - mid_shoulder[2]
-        forward_score = max(0, 1 - abs(forward_offset) * 3)
-
-        weights = {"vertical": 0.35, "neck": 0.35, "symmetry": 0.15, "forward": 0.15}
+        # Weighted scoring with emphasis on key indicators
+        weights = {
+            "head_tilt": 0.4,  # Forward head posture
+            "neck": 0.4,  # Neck angle
+            "ear_alignment": 0.2,  # Side tilt
+        }
 
         final_score = (
-            vertical_score * weights["vertical"]
+            head_tilt_score * weights["head_tilt"]
             + neck_score * weights["neck"]
-            + symmetry_score * weights["symmetry"]
-            + forward_score * weights["forward"]
+            + ear_alignment_score * weights["ear_alignment"]
         ) * 100
 
         if self.debug:
-            print(f"Vertical Score: {vertical_score:.2f}")
+            print(f"Head Tilt Score: {head_tilt_score:.2f}")
             print(f"Neck Score: {neck_score:.2f}")
-            print(f"Symmetry Score: {symmetry_score:.2f}")
-            print(f"Forward Score: {forward_score:.2f}")
+            print(f"Ear Alignment Score: {ear_alignment_score:.2f}")
 
         return min(100, max(0, final_score))
 
