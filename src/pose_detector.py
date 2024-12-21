@@ -110,15 +110,20 @@ class pose_detector:
                 2,
             )
 
-    def _calculate_posture_score(self, landmarks) -> float:
-        @staticmethod
-        def angle_between(v1, v2):
-            """Optimized angle calculation between vectors."""
-            dot_product = np.clip(
-                np.dot(v1 / np.linalg.norm(v1), v2 / np.linalg.norm(v2)), -1.0, 1.0
-            )
-            return np.degrees(np.arccos(dot_product))
+    @staticmethod
+    def angle_between(v1, v2):
+        """Optimized angle calculation between vectors."""
+        norm_v1 = np.linalg.norm(v1)
+        norm_v2 = np.linalg.norm(v2)
 
+        # Handle zero vectors
+        if norm_v1 == 0 or norm_v2 == 0:
+            return 0.0
+
+        dot_product = np.clip(np.dot(v1 / norm_v1, v2 / norm_v2), -1.0, 1.0)
+        return np.degrees(np.arccos(dot_product))
+
+    def _calculate_posture_score(self, landmarks) -> float:
         # Vectorized point extraction
         landmark_points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
 
@@ -141,7 +146,7 @@ class pose_detector:
         head_tilt_score = max(0, 1 - abs(head_forward_offset) * 1.2)
 
         neck_vector = mid_ear - mid_shoulder
-        neck_angle = angle_between(neck_vector, self.ideal_neck_vector)
+        neck_angle = self.angle_between(neck_vector, self.ideal_neck_vector)
         neck_vertical_score = max(0, 1 - abs(neck_angle) / 45)
 
         shoulder_scores = np.array(
@@ -152,14 +157,18 @@ class pose_detector:
         )
 
         spine_vector = mid_shoulder - mid_hip
-        spine_angle = angle_between(spine_vector, self.ideal_spine_vector)
+        spine_angle = self.angle_between(spine_vector, self.ideal_spine_vector)
         spine_alignment_score = max(0, 1 - abs(spine_angle) / 45)
 
         ear_distance = np.linalg.norm(right_ear - left_ear)
         ideal_ear_distance = np.linalg.norm(right_shoulder - left_shoulder) * 0.7
-        head_rotation_score = max(
-            0, 1 - abs(ear_distance - ideal_ear_distance) / ideal_ear_distance
-        )
+
+        if ideal_ear_distance == 0:
+            head_rotation_score = 0.0
+        else:
+            head_rotation_score = max(
+                0, 1 - abs(ear_distance - ideal_ear_distance) / ideal_ear_distance
+            )
 
         head_side_tilt_score = max(0, 1 - abs(left_ear[1] - right_ear[1]) * 5)
 
