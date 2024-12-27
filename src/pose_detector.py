@@ -9,9 +9,12 @@ class pose_detector:
         self,
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5,
-        debug=False,
+        frame_width=1280,
+        frame_height=720,
     ):
-        self.debug = debug
+        self.frame_width = frame_width
+        self.frame_height = frame_height
+        self.clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         self.mp_pose = mp.solutions.pose
         self.mp_draw = mp.solutions.drawing_utils
         self.pose = self.mp_pose.Pose(
@@ -45,8 +48,32 @@ class pose_detector:
         self.ideal_neck_vector = np.array([0, -1, 0])
         self.ideal_spine_vector = np.array([0, -1, 0])
 
+        # Pre-calculate constants for performance
+        self.weights = np.array([0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05])
+        self.score_thresholds = {
+            "head_tilt": 1.2,  # head forward threshold
+            "neck_angle": 45.0,  # max neck angle
+            "shoulder_level": 5.0,  # shoulder level threshold
+            "shoulder_roll": 2.0,  # shoulder roll threshold
+            "spine_angle": 45.0,  # max spine angle
+        }
+
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float]:
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # Resize frame to a consistent size for better performance
+        # Height of 720p maintains good detail while being computationally efficient
+        frame = cv2.resize(frame, (1280, 720))
+
+        # Apply adaptive histogram equalization to improve contrast in different lighting
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        enhanced = cv2.merge([l, a, b])
+        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+
+        # Convert to RGB for MediaPipe
+        rgb_frame = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
+
         results = self.pose.process(rgb_frame)
 
         if results.pose_landmarks:
@@ -111,95 +138,108 @@ class pose_detector:
             )
 
     @staticmethod
-    def angle_between(v1, v2):
-        """Optimized angle calculation between vectors."""
+    def angle_between(v1: np.ndarray, v2: np.ndarray) -> float:
+        """Calculate angle between vectors using robust method."""
         norm_v1 = np.linalg.norm(v1)
         norm_v2 = np.linalg.norm(v2)
 
-        # Handle zero vectors
-        if norm_v1 == 0 or norm_v2 == 0:
+        # Avoid division by zero
+        if norm_v1 < 1e-6 or norm_v2 < 1e-6:
             return 0.0
 
-        dot_product = np.clip(np.dot(v1 / norm_v1, v2 / norm_v2), -1.0, 1.0)
+        # Normalize vectors and calculate dot product
+        v1_norm = v1 / norm_v1
+        v2_norm = v2 / norm_v2
+        dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
+
         return np.degrees(np.arccos(dot_product))
 
     def _calculate_posture_score(self, landmarks) -> float:
-        # Vectorized point extraction
+        # Vectorized point extraction - more efficient than individual access
         landmark_points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
 
-        # Get relevant points using array indexing
+        # Get all relevant points in one go using array indexing
         nose = landmark_points[self.mp_pose.PoseLandmark.NOSE]
-        left_ear = landmark_points[self.mp_pose.PoseLandmark.LEFT_EAR]
-        right_ear = landmark_points[self.mp_pose.PoseLandmark.RIGHT_EAR]
-        left_shoulder = landmark_points[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
-        right_shoulder = landmark_points[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
-        left_hip = landmark_points[self.mp_pose.PoseLandmark.LEFT_HIP]
-        right_hip = landmark_points[self.mp_pose.PoseLandmark.RIGHT_HIP]
+        ears = landmark_points[
+            [self.mp_pose.PoseLandmark.LEFT_EAR, self.mp_pose.PoseLandmark.RIGHT_EAR]
+        ]
+        shoulders = landmark_points[
+            [
+                self.mp_pose.PoseLandmark.LEFT_SHOULDER,
+                self.mp_pose.PoseLandmark.RIGHT_SHOULDER,
+            ]
+        ]
+        hips = landmark_points[
+            [self.mp_pose.PoseLandmark.LEFT_HIP, self.mp_pose.PoseLandmark.RIGHT_HIP]
+        ]
 
-        # Vectorized midpoint calculations
-        mid_shoulder = (left_shoulder + right_shoulder) * 0.5
-        mid_ear = (left_ear + right_ear) * 0.5
-        mid_hip = (left_hip + right_hip) * 0.5
+        # Efficient midpoint calculations using numpy operations
+        mid_ear = np.mean(ears, axis=0)
+        mid_shoulder = np.mean(shoulders, axis=0)
+        mid_hip = np.mean(hips, axis=0)
 
         # Vectorized score calculations
         head_forward_offset = nose[2] - mid_ear[2]
-        head_tilt_score = max(0, 1 - abs(head_forward_offset) * 1.2)
+        head_tilt_score = np.clip(
+            1 - abs(head_forward_offset) * self.score_thresholds["head_tilt"], 0, 1
+        )
 
         neck_vector = mid_ear - mid_shoulder
         neck_angle = self.angle_between(neck_vector, self.ideal_neck_vector)
-        neck_vertical_score = max(0, 1 - abs(neck_angle) / 45)
+        neck_vertical_score = np.clip(
+            1 - abs(neck_angle) / self.score_thresholds["neck_angle"], 0, 1
+        )
 
+        # Efficient shoulder calculations
+        shoulder_diff = shoulders[0] - shoulders[1]  # left - right
         shoulder_scores = np.array(
             [
-                max(0, 1 - abs(left_shoulder[1] - right_shoulder[1]) * 5),  # level
-                max(0, 1 - abs(left_shoulder[2] - right_shoulder[2]) * 2),  # roll
+                np.clip(
+                    1 - abs(shoulder_diff[1]) * self.score_thresholds["shoulder_level"],
+                    0,
+                    1,
+                ),  # level
+                np.clip(
+                    1 - abs(shoulder_diff[2]) * self.score_thresholds["shoulder_roll"],
+                    0,
+                    1,
+                ),  # roll
             ]
         )
 
         spine_vector = mid_shoulder - mid_hip
         spine_angle = self.angle_between(spine_vector, self.ideal_spine_vector)
-        spine_alignment_score = max(0, 1 - abs(spine_angle) / 45)
+        spine_alignment_score = np.clip(
+            1 - abs(spine_angle) / self.score_thresholds["spine_angle"], 0, 1
+        )
 
-        ear_distance = np.linalg.norm(right_ear - left_ear)
-        ideal_ear_distance = np.linalg.norm(right_shoulder - left_shoulder) * 0.7
+        # Efficient head rotation calculation
+        ear_distance = np.linalg.norm(ears[1] - ears[0])  # right - left
+        shoulder_width = np.linalg.norm(shoulders[1] - shoulders[0])
+        ideal_ear_distance = shoulder_width * 0.7
 
-        if ideal_ear_distance == 0:
-            head_rotation_score = 0.0
-        else:
-            head_rotation_score = max(
-                0, 1 - abs(ear_distance - ideal_ear_distance) / ideal_ear_distance
-            )
+        head_rotation_score = np.clip(
+            1 - abs(ear_distance - ideal_ear_distance) / (ideal_ear_distance + 1e-6),
+            0,
+            1,
+        )
 
-        head_side_tilt_score = max(0, 1 - abs(left_ear[1] - right_ear[1]) * 5)
+        head_side_tilt_score = np.clip(1 - abs(ears[0][1] - ears[1][1]) * 5, 0, 1)
 
-        # Vectorized weighted sum
-        weights = np.array([0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05])
+        # Vectorized final score calculation
         scores = np.array(
             [
                 head_tilt_score,
                 neck_vertical_score,
-                shoulder_scores[0],  # level
-                shoulder_scores[1],  # roll
+                shoulder_scores[0],
+                shoulder_scores[1],
                 spine_alignment_score,
                 head_rotation_score,
                 head_side_tilt_score,
             ]
         )
 
-        final_score = np.clip(np.dot(scores, weights) * 100, 0, 100)
-
-        if self.debug:
-            score_names = [
-                "Head Tilt",
-                "Neck Vertical",
-                "Shoulder Level",
-                "Shoulder Roll",
-                "Spine Alignment",
-                "Head Rotation",
-                "Head Side Tilt",
-            ]
-            for name, score in zip(score_names, scores):
-                print(f"{name} Score: {score:.2f}")
+        final_score = np.clip(np.dot(scores, self.weights) * 100, 0, 100)
 
         return final_score
 
