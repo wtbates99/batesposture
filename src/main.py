@@ -9,6 +9,7 @@ def main():
     frame_reader = webcam()
     detector = pose_detector()
     s_history = score_history()
+    show_video = True  # Initial state of video display
 
     frame_reader.start(callback=detector.process_frame)
 
@@ -16,15 +17,19 @@ def main():
         frame, score = frame_reader.get_latest_frame()
         if frame is not None:
             s_history.add_score(score)
-            avg_score = s_history.get_average_score()
-            print(
-                f"Average score over last {s_history.WINDOW_SIZE} seconds: {avg_score:.2f}"
-            )
-            cv2.imshow(
-                "Posture Detection", frame
-            )  # window display must be on the main thread
-            if cv2.waitKey(1) & 0xFF == ord("q"):
+
+            if show_video:
+                cv2.imshow("Posture Detection", frame)
+
+            # Handle key presses
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord("q"):
                 break
+            elif key == ord("v"):  # 'v' key toggles video display
+                show_video = not show_video
+                if not show_video:
+                    cv2.destroyWindow("Posture Detection")
+
         time.sleep(0.1)  # Prevent CPU overuse
 
     frame_reader.stop()
