@@ -17,7 +17,7 @@ class pose_detector:
         self.pose = self.mp_pose.Pose(
             min_detection_confidence=min_detection_confidence,
             min_tracking_confidence=min_tracking_confidence,
-            model_complexity=2,  # Use the most detailed model
+            model_complexity=1,  # Use the most detailed model
         )
         self.posture_landmarks = [
             self.mp_pose.PoseLandmark.NOSE,
@@ -204,7 +204,6 @@ class pose_detector:
         return final_score
 
     def _draw_posture_feedback(self, frame: np.ndarray, score: float) -> None:
-        h, w, _ = frame.shape
         score_color = (
             0,
             int(min(255, score * 2.55)),
@@ -230,5 +229,3 @@ class pose_detector:
                 (0, 0, 255),
                 2,
             )
-
-        cv2.imshow("Posture Detection", frame)
