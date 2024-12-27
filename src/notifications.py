@@ -42,25 +42,6 @@ class notification_manager:
             )
 
 
-# Add test code
 if __name__ == "__main__":
-    # Create an instance of the notification manager
     notifier = notification_manager()
-
-    # Simulate poor posture detection
-    print("Testing notification system...")
-    print("Simulating poor posture (score: 0.5)")
-
-    # Test with a poor posture score (0.5 is below the threshold of 0.6)
     notifier.check_and_notify(0.5)
-
-    # Wait for 2 seconds
-    time.sleep(2)
-
-    print("\nTesting notification cooldown...")
-    print("Attempting second notification...")
-
-    # Try to send another notification (should be blocked by cooldown)
-    notifier.check_and_notify(0.5)
-
-    print("\nTest complete!")
