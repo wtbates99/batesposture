@@ -20,9 +20,9 @@ class notification_manager:
             self.last_notification_time = current_time
 
     def send_notification(self):
+        title = "Posture Alert!"
+        message = "Sit up or you will regret it!"
         if platform.system() == "Darwin":  # macOS
-            title = "Posture Alert!"
-            message = "Please sit up straight! Your posture needs attention."
             os.system(
                 """
                 osascript -e 'display notification "{}" with title "{}"'
@@ -30,13 +30,15 @@ class notification_manager:
                     message, title
                 )
             )
+        elif platform.system() == "Linux":
+            os.system(f'notify-send "{title}" "{message}"')
         else:
             # Fall back to plyer for other operating systems
             from plyer import notification
 
             notification.notify(
-                title="Posture Alert!",
-                message="Please sit up straight! Your posture needs attention.",
+                title=title,
+                message=message,
                 app_icon=None,
                 timeout=10,
             )
