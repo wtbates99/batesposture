@@ -11,8 +11,6 @@ class score_history:
         self.is_buffer_full = False
         self.WINDOW_SIZE = 5
         self.SCORE_THRESHOLD = 65
-        self.NOTIFICATION_COOLDOWN = 60
-        self.last_notification_time = 0
 
     def add_score(self, score):
         current_time = time()
