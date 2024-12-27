@@ -4,11 +4,6 @@ from ..pose_detector import pose_detector
 
 
 @pytest.fixture
-def pd():
-    return pose_detector(debug=True)
-
-
-@pytest.fixture
 def mock_frame():
     return np.zeros((480, 640, 3), dtype=np.uint8)
 
@@ -31,6 +26,12 @@ def mock_landmarks():
                     self.landmark[idx] = mock_landmark(x, y, z)
 
     return mock_landmarks
+
+
+@pytest.fixture
+def pd():
+    """Fixture to provide a pose_detector instance for testing"""
+    return pose_detector()
 
 
 class TestPoseDetector:
