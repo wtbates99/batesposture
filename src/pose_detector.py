@@ -65,10 +65,10 @@ class pose_detector:
 
         # Apply adaptive histogram equalization to improve contrast in different lighting
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
+        l_channel, a_channel, b_channel = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        l = clahe.apply(l)
-        enhanced = cv2.merge([l, a, b])
+        l_channel = clahe.apply(l_channel)
+        enhanced = cv2.merge([l_channel, a_channel, b_channel])
         enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
         # Convert to RGB for MediaPipe
