@@ -10,7 +10,7 @@ def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
-    global global_tray
+    global global_tray  # to fix the garbage collection issue
     global_tray = PostureTrackerTray()
 
     sys.exit(app.exec())

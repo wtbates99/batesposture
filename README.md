@@ -1,16 +1,37 @@
-# Posture Monitor
+# Posture Tracker
 
-A computer vision application that helps prevent poor posture and "tech neck" by monitoring your sitting position throughout the day.
-
-## Overview
-
-This program uses your webcam to periodically analyze your sitting posture, helping you maintain good ergonomic habits while working at your computer. It tracks your head position and alignment to detect slouching and forward head posture ("nerd neck"), providing real-time feedback and collecting statistics about your posture throughout the day.
+A real-time posture monitoring application that helps prevent poor posture while working at your computer. The application runs in your system tray and uses computer vision to analyze your posture through your webcam.
 
 ## Features
 
-- Real-time posture monitoring using your webcam
-- Detection of forward head posture and slouching
-- Statistical tracking of posture throughout the day
-- Configurable notification alerts when poor posture is detected
-- Daily/weekly reports of posture statistics
-- Privacy-focused: All processing is done locally on your machine
+- System tray integration for unobtrusive monitoring
+- Real-time posture scoring from 0-100
+- Visual feedback through color-coded score display
+- Configurable tracking intervals (continuous to 4-hour intervals)
+- Optional video window showing posture analysis
+- Automatic notifications when poor posture is detected
+- Cross-platform support (Windows, macOS, Linux)
+- Privacy-focused: All processing happens locally on your machine
+
+## Technical Details
+
+The application uses:
+- MediaPipe for pose detection and landmark tracking
+- OpenCV for video processing and visualization
+- PyQt6 for the system tray interface
+- Platform-specific notification systems
+
+## Usage
+
+1. Launch the application - it will appear in your system tray
+2. Right-click the tray icon to access the menu
+3. Click "Start Tracking" to begin posture monitoring
+4. Optionally enable the video window to see the pose detection
+5. Choose your preferred tracking interval from the menu
+6. The tray icon shows your current posture score (0-100)
+
+The application will notify you when your posture needs correction, helping you maintain a healthier sitting position throughout your workday.
+
+## Privacy Note
+
+All video processing is done locally on your computer. No video data is ever stored or transmitted over the internet.
