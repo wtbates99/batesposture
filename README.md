@@ -46,7 +46,7 @@ Here is the toolbar icon that you will see in your system tray:
 
 Here is the toolbar menu that you will see when you click the toolbar icon:
 
-![Toolbar Menu](static/toolbar_menu.png)
+![Toolbar Menu](static/toolbar_options.png)
 
 Here is the notification that you will see when your posture is poor:
 
