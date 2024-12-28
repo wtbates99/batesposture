@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QInputDialog
 from PyQt6.QtGui import QIcon, QAction, QImage, QPixmap
 from PyQt6.QtCore import QTimer
 import cv2
@@ -7,6 +7,7 @@ from pose_detector import pose_detector
 from score_history import score_history
 from notifications import notification_manager
 import numpy as np
+from datetime import datetime, timedelta
 
 
 class PostureTrackerTray(QSystemTrayIcon):
@@ -23,6 +24,11 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.tracking_enabled = False
         self.video_window = None
         self.current_score = 0
+        self.tracking_interval = 0  # 0 means continuous tracking
+        self.last_tracking_time = None
+        self.interval_timer = QTimer()
+        self.interval_timer.timeout.connect(self.check_interval)
+        self.interval_timer.start(1000)  # Check every second
 
         # Setup tray icon and menu
         self.setup_tray()
@@ -39,24 +45,42 @@ class PostureTrackerTray(QSystemTrayIcon):
         # Create the menu
         menu = QMenu()
 
-        # Add toggle tracking action
+        # Create actions first
         self.toggle_tracking_action = QAction("Start Tracking")
         self.toggle_tracking_action.triggered.connect(self.toggle_tracking)
-        menu.addAction(self.toggle_tracking_action)
 
-        # Add toggle video action
         self.toggle_video_action = QAction("Show Video")
         self.toggle_video_action.triggered.connect(self.toggle_video)
         self.toggle_video_action.setEnabled(False)
+
+        # Add interval submenu
+        interval_menu = QMenu("Tracking Interval", menu)
+        interval_actions = {
+            "Continuous": 0,
+            "Every 15 minutes": 15,
+            "Every 30 minutes": 30,
+            "Every hour": 60,
+            "Every 2 hours": 120,
+            "Every 4 hours": 240,
+            "Custom...": -1,
+        }
+
+        for label, minutes in interval_actions.items():
+            action = QAction(label, interval_menu)
+            action.setData(minutes)
+            action.triggered.connect(lambda checked, m=minutes: self.set_interval(m))
+            interval_menu.addAction(action)
+
+        # Build menu structure
+        menu.addMenu(interval_menu)
+        menu.addAction(self.toggle_tracking_action)
         menu.addAction(self.toggle_video_action)
-
         menu.addSeparator()
-
         menu.addAction(
             QAction("Quit Application", menu, triggered=self.quit_application)
         )
 
-        # Ensure menu is set and visible
+        # Set menu and make visible
         self.setContextMenu(menu)
         self.setVisible(True)
 
@@ -101,6 +125,14 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.tracking_enabled = True
             self.toggle_tracking_action.setText("Stop Tracking")
             self.toggle_video_action.setEnabled(True)
+
+            # Update notification text based on interval
+            if self.tracking_interval > 0:
+                self.notifier.set_message(
+                    f"Checking posture (runs every {self.tracking_interval} minutes)"
+                )
+            else:
+                self.notifier.set_message("Please sit up straight!")
         else:
             # Stop tracking
             self.frame_reader.stop()
@@ -134,8 +166,6 @@ class PostureTrackerTray(QSystemTrayIcon):
 
                 # Check posture and notify if needed
                 self.notifier.check_and_notify(average_score)
-                print(f"Average score: {average_score}")
-
                 # Update video window if open
                 if self.video_window:
                     cv2.imshow("Posture Detection", frame)
@@ -146,3 +176,59 @@ class PostureTrackerTray(QSystemTrayIcon):
         if self.video_window:
             cv2.destroyWindow("Posture Detection")
         QApplication.quit()
+
+    def set_interval(self, minutes):
+        if minutes == -1:  # Custom interval
+            minutes, ok = QInputDialog.getInt(
+                None,
+                "Set Custom Interval",
+                "Enter interval in minutes:",
+                value=60,
+                min=1,
+                max=1440,  # 24 hours
+            )
+            if not ok:
+                return
+
+        self.tracking_interval = minutes
+        if minutes == 0:
+            # Continuous tracking
+            if not self.tracking_enabled:
+                self.toggle_tracking()
+        else:
+            # Start the first interval
+            self.last_tracking_time = None
+            if self.tracking_enabled:
+                self.toggle_tracking()  # Stop current tracking
+
+    def check_interval(self):
+        if self.tracking_interval <= 0:  # Continuous tracking
+            return
+
+        current_time = datetime.now()
+
+        # Initialize last_tracking_time if None
+        if self.last_tracking_time is None:
+            self.last_tracking_time = current_time
+            self.start_interval_tracking()
+            return
+
+        # Check if it's time for the next interval
+        if current_time - self.last_tracking_time >= timedelta(
+            minutes=self.tracking_interval
+        ):
+            self.start_interval_tracking()
+
+    def start_interval_tracking(self):
+        self.last_tracking_time = datetime.now()
+
+        # Start tracking if not already tracking
+        if not self.tracking_enabled:
+            self.toggle_tracking()
+
+        # Set a timer to stop tracking after 1 minute
+        QTimer.singleShot(60000, self.stop_interval_tracking)
+
+    def stop_interval_tracking(self):
+        if self.tracking_enabled and self.tracking_interval > 0:
+            self.toggle_tracking()
