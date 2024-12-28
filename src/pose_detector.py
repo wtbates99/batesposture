@@ -58,7 +58,7 @@ class pose_detector:
             "spine_angle": 45.0,  # max spine angle
         }
 
-    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float]:
+    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, any]:
         # Resize frame to a consistent size for better performance
         # Height of 720p maintains good detail while being computationally efficient
         frame = cv2.resize(frame, (1280, 720))
@@ -80,8 +80,8 @@ class pose_detector:
             self._draw_landmarks(frame, results)
             posture_score = self._calculate_posture_score(results.pose_landmarks)
             self._draw_posture_feedback(frame, posture_score)
-            return frame, posture_score
-        return frame, 0.0
+            return frame, posture_score, results
+        return frame, 0.0, None
 
     def _draw_landmarks(self, frame: np.ndarray, results) -> None:
         self.mp_draw.draw_landmarks(

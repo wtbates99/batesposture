@@ -14,6 +14,7 @@ class webcam:
         self._latest_frame = None
         self._latest_score = 0
         self._callback = None
+        self._latest_pose_results = None
 
     def start(self, callback=None):
         """Start the camera capture with optional callback for frame processing"""
@@ -54,8 +55,9 @@ class webcam:
                 break
 
             if self._callback:
-                frame, score = self._callback(frame)
+                frame, score, results = self._callback(frame)
                 self._latest_score = score
+                self._latest_pose_results = results
 
             self._latest_frame = frame
 
@@ -66,6 +68,10 @@ class webcam:
     def get_latest_frame(self):
         """Get the most recent frame and score"""
         return self._latest_frame, self._latest_score
+
+    def get_latest_pose_results(self):
+        """Get the most recent pose detection results"""
+        return self._latest_pose_results
 
     def __del__(self):
         """Ensure cleanup on destruction"""

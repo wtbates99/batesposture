@@ -12,6 +12,7 @@ from score_history import score_history
 from notifications import notification_manager
 import numpy as np
 from datetime import datetime, timedelta
+from db_manager import DBManager
 
 
 class PostureTrackerTray(QSystemTrayIcon):
@@ -31,6 +32,9 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.interval_timer = QTimer()
         self.interval_timer.timeout.connect(self.check_interval)
         self.interval_timer.start(1000)  # Check every second
+
+        self.db = DBManager("posture_data.db")
+        self.last_db_save = None
 
         self.setup_tray()
 
@@ -151,15 +155,41 @@ class PostureTrackerTray(QSystemTrayIcon):
 
                 self.setIcon(self.create_score_icon(average_score))
 
+                current_time = datetime.now()
+
+                # For interval tracking: save once during the tracking minute
+                if (
+                    self.tracking_interval > 0
+                    and self.last_tracking_time is not None
+                    and self.last_db_save is None
+                    and (current_time - self.last_tracking_time).total_seconds() <= 60
+                ):
+                    self._save_to_db(average_score)
+
+                # For continuous tracking: save every minute
+                elif self.tracking_interval == 0 and (
+                    self.last_db_save is None
+                    or (current_time - self.last_db_save).total_seconds() >= 60
+                ):
+                    self._save_to_db(average_score)
+
                 self.notifier.check_and_notify(average_score)
                 if self.video_window:
                     cv2.imshow("Posture Detection", frame)
                     cv2.waitKey(1)
 
+    def _save_to_db(self, average_score):
+        """Helper method to save pose data to database"""
+        results = self.frame_reader.get_latest_pose_results()
+        if results and results.pose_landmarks:
+            self.db.save_pose_data(results.pose_landmarks, average_score)
+            self.last_db_save = datetime.now()
+
     def quit_application(self):
         self.frame_reader.stop()
         if self.video_window:
             cv2.destroyWindow("Posture Detection")
+        self.db.close()
         QApplication.quit()
 
     def set_interval(self, minutes):
@@ -190,6 +220,7 @@ class PostureTrackerTray(QSystemTrayIcon):
 
     def start_interval_tracking(self):
         self.last_tracking_time = datetime.now()
+        self.last_db_save = None
 
         if not self.tracking_enabled:
             self.toggle_tracking()
