@@ -35,6 +35,7 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         self.db = DBManager("posture_data.db")
         self.last_db_save = None
+        self.db_enabled = False
 
         self.setup_tray()
 
@@ -79,6 +80,12 @@ class PostureTrackerTray(QSystemTrayIcon):
         menu.addMenu(interval_menu)
         menu.addAction(self.toggle_tracking_action)
         menu.addAction(self.toggle_video_action)
+
+        self.toggle_db_action = QAction("Enable Database Logging", menu, checkable=True)
+        self.toggle_db_action.setChecked(False)
+        self.toggle_db_action.triggered.connect(self.toggle_database)
+
+        menu.addAction(self.toggle_db_action)
         menu.addSeparator()
         menu.addAction(
             QAction("Quit Application", menu, triggered=self.quit_application)
@@ -155,23 +162,23 @@ class PostureTrackerTray(QSystemTrayIcon):
 
                 self.setIcon(self.create_score_icon(average_score))
 
-                current_time = datetime.now()
+                if self.db_enabled:
+                    current_time = datetime.now()
 
-                # For interval tracking: save once during the tracking minute
-                if (
-                    self.tracking_interval > 0
-                    and self.last_tracking_time is not None
-                    and self.last_db_save is None
-                    and (current_time - self.last_tracking_time).total_seconds() <= 60
-                ):
-                    self._save_to_db(average_score)
+                    if (
+                        self.tracking_interval > 0
+                        and self.last_tracking_time is not None
+                        and self.last_db_save is None
+                        and (current_time - self.last_tracking_time).total_seconds()
+                        <= 60
+                    ):
+                        self._save_to_db(average_score)
 
-                # For continuous tracking: save every minute
-                elif self.tracking_interval == 0 and (
-                    self.last_db_save is None
-                    or (current_time - self.last_db_save).total_seconds() >= 60
-                ):
-                    self._save_to_db(average_score)
+                    elif self.tracking_interval == 0 and (
+                        self.last_db_save is None
+                        or (current_time - self.last_db_save).total_seconds() >= 60
+                    ):
+                        self._save_to_db(average_score)
 
                 self.notifier.check_and_notify(average_score)
                 if self.video_window:
@@ -230,3 +237,9 @@ class PostureTrackerTray(QSystemTrayIcon):
     def stop_interval_tracking(self):
         if self.tracking_enabled and self.tracking_interval > 0:
             self.toggle_tracking()
+
+    def toggle_database(self, checked):
+        """Toggle database logging on/off"""
+        self.db_enabled = checked
+        if checked:
+            self.last_db_save = None
