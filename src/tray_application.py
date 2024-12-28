@@ -128,13 +128,13 @@ class PostureTrackerTray(QSystemTrayIcon):
             if frame is not None:
                 self.scores.add_score(score)
                 average_score = self.scores.get_average_score()
-                self.current_score = average_score
 
                 # Update tray icon with current score
                 self.setIcon(self.create_score_icon(average_score))
 
                 # Check posture and notify if needed
                 self.notifier.check_and_notify(average_score)
+                print(f"Average score: {average_score}")
 
                 # Update video window if open
                 if self.video_window:

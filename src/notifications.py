@@ -7,7 +7,7 @@ class notification_manager:
     def __init__(self):
         self.last_notification_time = 0
         self.notification_cooldown = 300  # 5 minutes between notifications
-        self.poor_posture_threshold = 0.6  # Adjust this threshold as needed
+        self.poor_posture_threshold = 60  # Adjust this threshold as needed
 
     def check_and_notify(self, posture_score):
         current_time = time.time()
@@ -46,4 +46,4 @@ class notification_manager:
 
 if __name__ == "__main__":
     notifier = notification_manager()
-    notifier.check_and_notify(0.5)
+    notifier.check_and_notify(50)
