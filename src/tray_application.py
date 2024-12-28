@@ -1,12 +1,11 @@
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PyQt6.QtGui import QIcon, QAction, QImage, QPixmap
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QTimer
 import cv2
 from webcam import webcam
 from pose_detector import pose_detector
 from score_history import score_history
 from notifications import notification_manager
-import sys
 import numpy as np
 
 
@@ -48,39 +47,50 @@ class PostureTrackerTray(QSystemTrayIcon):
         # Add toggle video action
         self.toggle_video_action = QAction("Show Video")
         self.toggle_video_action.triggered.connect(self.toggle_video)
-        self.toggle_video_action.setEnabled(False)  # Disabled until tracking starts
+        self.toggle_video_action.setEnabled(False)
         menu.addAction(self.toggle_video_action)
 
-        # Add quit action
-        quit_action = QAction("Quit")
-        quit_action.triggered.connect(self.quit_application)
-        menu.addAction(quit_action)
+        menu.addSeparator()
 
+        menu.addAction(
+            QAction("Quit Application", menu, triggered=self.quit_application)
+        )
+
+        # Ensure menu is set and visible
         self.setContextMenu(menu)
         self.setVisible(True)
 
     def create_score_icon(self, score):
-        # Create a 64x64 image with the score
-        img = np.zeros((64, 64, 3), dtype=np.uint8)
-        img.fill(255)  # White background
+        # Create a transparent 64x64 image (RGBA)
+        img = np.zeros((64, 64, 4), dtype=np.uint8)
+        # Set alpha channel to 0 (fully transparent)
+        img[:, :, 3] = 0
 
         # Add text centered in the image
-        font = cv2.FONT_HERSHEY_SIMPLEX
+        font = cv2.FONT_HERSHEY_DUPLEX  # Changed to a more readable font
         text = f"{int(score)}"
-        text_size = cv2.getTextSize(text, font, 1, 2)[0]
+        # Increase font scale for larger text
+        font_scale = 2.0 if len(text) == 1 else (1.5 if len(text) == 2 else 1.2)
+        thickness = 3
+        text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
         text_x = (64 - text_size[0]) // 2
         text_y = (64 + text_size[1]) // 2
 
         # Color based on score (red to green)
-        color = (0, min(255, score * 2.55), min(255, (100 - score) * 2.55))
+        # Convert score to color using HSV (120 for green, 0 for red)
+        hue = int(score * 120 / 100)
+        rgb_color = cv2.cvtColor(np.uint8([[[hue, 255, 255]]]), cv2.COLOR_HSV2BGR)[0][0]
+        color = (int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2]), 255)
 
-        cv2.putText(img, text, (text_x, text_y), font, 1, color, 2)
+        # Create temporary image for text
+        temp = img.copy()
+        cv2.putText(temp, text, (text_x, text_y), font, font_scale, color, thickness)
 
-        # Convert to QIcon
-        height, width, channel = img.shape
-        bytes_per_line = 3 * width
+        # Convert to QIcon with transparency
+        height, width, channel = temp.shape
+        bytes_per_line = 4 * width
         q_img = QImage(
-            img.data, width, height, bytes_per_line, QImage.Format.Format_RGB888
+            temp.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888
         )
         return QIcon(QPixmap.fromImage(q_img))
 
