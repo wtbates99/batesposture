@@ -1,5 +1,10 @@
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QInputDialog
-from PyQt6.QtGui import QIcon, QAction, QImage, QPixmap
+from PyQt6.QtWidgets import (
+    QApplication,
+    QSystemTrayIcon,
+    QMenu,
+    QInputDialog,
+)
+from PyQt6.QtGui import QIcon, QAction, QImage, QPixmap, QActionGroup
 from PyQt6.QtCore import QTimer
 import cv2
 from webcam import webcam
@@ -62,14 +67,21 @@ class PostureTrackerTray(QSystemTrayIcon):
             "Every hour": 60,
             "Every 2 hours": 120,
             "Every 4 hours": 240,
-            "Custom...": -1,
         }
 
+        # Create action group to handle radio buttons
+        interval_group = QActionGroup(interval_menu)
+        interval_group.setExclusive(True)
+
         for label, minutes in interval_actions.items():
-            action = QAction(label, interval_menu)
+            action = QAction(label, interval_menu, checkable=True)
             action.setData(minutes)
             action.triggered.connect(lambda checked, m=minutes: self.set_interval(m))
             interval_menu.addAction(action)
+            interval_group.addAction(action)
+            # Set Continuous as default selected option
+            if minutes == 0:
+                action.setChecked(True)
 
         # Build menu structure
         menu.addMenu(interval_menu)
@@ -178,18 +190,6 @@ class PostureTrackerTray(QSystemTrayIcon):
         QApplication.quit()
 
     def set_interval(self, minutes):
-        if minutes == -1:  # Custom interval
-            minutes, ok = QInputDialog.getInt(
-                None,
-                "Set Custom Interval",
-                "Enter interval in minutes:",
-                value=60,
-                min=1,
-                max=1440,  # 24 hours
-            )
-            if not ok:
-                return
-
         self.tracking_interval = minutes
         if minutes == 0:
             # Continuous tracking
