@@ -33,6 +33,21 @@ The application uses:
 
 The application will notify you when your posture needs correction, helping you maintain a healthier sitting position throughout your workday.
 
+Important: there is an option to enable database logging of posture data (optional in the toolbar, and will be used in the future to build a posture history and model)
+
 ## Privacy Note
 
 All video processing is done locally on your computer. No video data is ever stored or transmitted over the internet.
+
+# Images
+Here is the toolbar icon that you will see in your system tray:
+
+![Toolbar Icon](static/toolbar_icon.png)
+
+Here is the toolbar menu that you will see when you click the toolbar icon:
+
+![Toolbar Menu](static/toolbar_menu.png)
+
+Here is the notification that you will see when your posture is poor:
+
+![Notification](static/notification.png)
