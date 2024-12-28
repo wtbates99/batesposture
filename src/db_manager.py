@@ -1,11 +1,13 @@
 import sqlite3
 from datetime import datetime
+import mediapipe as mp
 
 
 class DBManager:
     def __init__(self, db_path: str):
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
+        self.mp_pose = mp.solutions.pose
         self._create_tables()
 
     def _create_tables(self):
@@ -23,7 +25,7 @@ class DBManager:
             "pose_landmarks",
             [
                 ("timestamp", "DATETIME"),
-                ("landmark_id", "INTEGER"),
+                ("landmark_name", "TEXT"),
                 ("x", "FLOAT"),
                 ("y", "FLOAT"),
                 ("z", "FLOAT"),
@@ -51,13 +53,15 @@ class DBManager:
         # Save overall score
         self.insert("posture_scores", [(timestamp, score)])
 
-        # Save landmark positions
+        # Save landmark positions with names
         landmark_data = []
         for idx, landmark in enumerate(landmarks.landmark):
+            # Get the landmark name from the enum
+            landmark_name = self.mp_pose.PoseLandmark(idx).name
             landmark_data.append(
                 (
                     timestamp,
-                    idx,
+                    landmark_name,
                     landmark.x,
                     landmark.y,
                     landmark.z,
