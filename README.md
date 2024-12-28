@@ -23,12 +23,13 @@ The application uses:
 
 ## Usage
 
-1. Launch the application - it will appear in your system tray
-2. Right-click the tray icon to access the menu
-3. Click "Start Tracking" to begin posture monitoring
-4. Optionally enable the video window to see the pose detection
-5. Choose your preferred tracking interval from the menu
-6. The tray icon shows your current posture score (0-100)
+1. Install dependencies: `pip install -r requirements.txt`
+2. Run the application: `python src/main.py`
+3. Click the tray icon to access the menu
+4. Click "Start Tracking" to begin posture monitoring
+5. Optionally enable the video window to see the pose detection
+6. Choose your preferred tracking interval from the menu
+7. The tray icon shows your current posture score (0-100)
 
 The application will notify you when your posture needs correction, helping you maintain a healthier sitting position throughout your workday.
 
