@@ -37,6 +37,27 @@ The application leverages:
 
 ## Getting Started
 
+### Linux Dependencies
+Required packages:
+```bash
+sudo apt install -y \
+    libxcb1 \
+    libxcb-xinerama0 \
+    libxcb-cursor0 \
+    libxkbcommon-x11-0 \
+    libxcb-render0 \
+    libxcb-render-util0
+```
+
+Optional packages for additional features:
+```bash
+sudo apt install -y \
+    qt6-base-dev \
+    qt6-wayland \
+    libqt5x11extras5
+```
+### General Dependencies
+
 1. Install dependencies:
    ```bash
    pip install -r requirements.txt
