@@ -1,5 +1,7 @@
-import pytest
 from time import sleep, time
+
+import pytest
+
 from ..score_history import score_history
 
 

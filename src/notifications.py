@@ -1,6 +1,6 @@
-import time
 import os
 import platform
+import time
 
 
 class NotificationManager:

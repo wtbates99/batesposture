@@ -1,8 +1,10 @@
-from PyQt6.QtWidgets import QApplication
-from tray_application import PostureTrackerTray
-import sys
 import os
+import sys
+
 import psutil
+from PyQt6.QtWidgets import QApplication
+
+from tray_application import PostureTrackerTray
 
 
 def kill_existing_instance(lock_file):
@@ -40,7 +42,7 @@ def main():
             f.write(str(os.getpid()))
 
         app.setQuitOnLastWindowClosed(False)
-        tray = PostureTrackerTray()
+        tray = PostureTrackerTray()  # noqa: F841
         exit_code = app.exec()
 
     finally:

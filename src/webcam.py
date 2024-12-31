@@ -1,6 +1,7 @@
-import cv2
-from threading import Thread, Event
 import time
+from threading import Event, Thread
+
+import cv2
 
 
 class Webcam:
