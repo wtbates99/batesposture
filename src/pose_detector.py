@@ -1,7 +1,8 @@
+from typing import Tuple
+
 import cv2
 import mediapipe as mp
 import numpy as np
-from typing import Tuple
 
 
 class PoseDetector:

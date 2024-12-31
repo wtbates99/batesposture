@@ -1,18 +1,16 @@
-from PyQt6.QtWidgets import (
-    QApplication,
-    QSystemTrayIcon,
-    QMenu,
-)
-from PyQt6.QtGui import QIcon, QAction, QImage, QPixmap, QActionGroup
-from PyQt6.QtCore import QTimer
+from datetime import datetime, timedelta
+
 import cv2
-from webcam import Webcam
+import numpy as np
+from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QAction, QActionGroup, QIcon, QImage, QPixmap
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+
+from db_manager import DBManager
+from notifications import NotificationManager
 from pose_detector import PoseDetector
 from score_history import ScoreHistory
-from notifications import NotificationManager
-import numpy as np
-from datetime import datetime, timedelta
-from db_manager import DBManager
+from webcam import Webcam
 
 
 class PostureTrackerTray(QSystemTrayIcon):
