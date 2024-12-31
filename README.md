@@ -1,4 +1,4 @@
-# Posture Tracker
+# opencv2-posture-corrector
 
 A real-time posture monitoring application that helps prevent poor posture while working at your computer. The application runs in your system tray and uses computer vision to analyze your posture through your webcam.
 
