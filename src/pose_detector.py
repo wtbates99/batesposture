@@ -4,7 +4,7 @@ import numpy as np
 from typing import Tuple
 
 
-class pose_detector:
+class PoseDetector:
     def __init__(
         self,
         min_detection_confidence=0.5,

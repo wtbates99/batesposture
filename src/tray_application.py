@@ -6,10 +6,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QIcon, QAction, QImage, QPixmap, QActionGroup
 from PyQt6.QtCore import QTimer
 import cv2
-from webcam import webcam
-from pose_detector import pose_detector
-from score_history import score_history
-from notifications import notification_manager
+from webcam import Webcam
+from pose_detector import PoseDetector
+from score_history import ScoreHistory
+from notifications import NotificationManager
 import numpy as np
 from datetime import datetime, timedelta
 from db_manager import DBManager
@@ -19,10 +19,10 @@ class PostureTrackerTray(QSystemTrayIcon):
     def __init__(self):
         super().__init__()
 
-        self.frame_reader = webcam()
-        self.detector = pose_detector()
-        self.scores = score_history()
-        self.notifier = notification_manager()
+        self.frame_reader = Webcam()
+        self.detector = PoseDetector()
+        self.scores = ScoreHistory()
+        self.notifier = NotificationManager()
 
         self.tracking_enabled = False
         self.video_window = None

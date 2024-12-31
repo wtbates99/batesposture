@@ -2,7 +2,7 @@ import numpy as np
 from time import time
 
 
-class score_history:
+class ScoreHistory:
     def __init__(self):
         self.buffer_size = 1000
         self.timestamps = np.zeros(self.buffer_size, dtype=np.float64)
