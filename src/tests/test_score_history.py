@@ -2,12 +2,12 @@ from time import sleep, time
 
 import pytest
 
-from ..score_history import score_history
+from ..score_history import ScoreHistory
 
 
 @pytest.fixture
 def sh():
-    return score_history()
+    return ScoreHistory()
 
 
 class TestScoreHistory:

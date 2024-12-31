@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import pytest
 
-from ..pose_detector import pose_detector
+from ..pose_detector import PoseDetector
 
 
 @pytest.fixture
@@ -33,13 +33,13 @@ def mock_landmarks():
 @pytest.fixture
 def pd():
     """Fixture to provide a pose_detector instance for testing"""
-    return pose_detector()
+    return PoseDetector()
 
 
 class TestPoseDetector:
     def test_initialization(self):
         # Test with default values only
-        detector = pose_detector()
+        detector = PoseDetector()
         assert detector.pose is not None
         assert detector.ideal_neck_vector.shape == (3,)
         assert detector.ideal_spine_vector.shape == (3,)
