@@ -1,8 +1,8 @@
+import cv2
 import numpy as np
 import pytest
 
 from ..pose_detector import pose_detector
-import cv2
 
 
 @pytest.fixture

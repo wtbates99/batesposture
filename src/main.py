@@ -42,7 +42,7 @@ def main():
             f.write(str(os.getpid()))
 
         app.setQuitOnLastWindowClosed(False)
-        tray = PostureTrackerTray()  # noqa: F841
+        PostureTrackerTray()
         exit_code = app.exec()
 
     finally:
