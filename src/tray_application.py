@@ -17,6 +17,11 @@ class PostureTrackerTray(QSystemTrayIcon):
     def __init__(self):
         super().__init__()
 
+        # Add signal handler for clean shutdown
+        import signal
+
+        signal.signal(signal.SIGINT, self.signal_handler)
+
         self.frame_reader = Webcam()
         self.detector = PoseDetector()
         self.scores = ScoreHistory()
@@ -191,11 +196,31 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.last_db_save = datetime.now()
 
     def quit_application(self):
-        self.frame_reader.stop()
-        if self.video_window:
-            cv2.destroyWindow("Posture Detection")
-        self.db.close()
-        QApplication.quit()
+        """Clean up application resources and quit"""
+        try:
+            if self.tracking_enabled:
+                self.toggle_tracking()
+
+            if self.video_window:
+                cv2.destroyAllWindows()
+                self.video_window = None
+
+            if hasattr(self, "db"):
+                self.db.close()
+
+            if hasattr(self, "timer"):
+                self.timer.stop()
+            if hasattr(self, "interval_timer"):
+                self.interval_timer.stop()
+
+            self.hide()
+
+            QApplication.instance().quit()
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+            import sys
+
+            sys.exit(1)
 
     def set_interval(self, minutes):
         self.tracking_interval = minutes
@@ -224,20 +249,33 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.start_interval_tracking()
 
     def start_interval_tracking(self):
+        """Start tracking posture for a fixed interval"""
         self.last_tracking_time = datetime.now()
         self.last_db_save = None
 
         if not self.tracking_enabled:
             self.toggle_tracking()
 
-        QTimer.singleShot(60000, self.stop_interval_tracking)
+        try:
+            QTimer.singleShot(60000, self.stop_interval_tracking)
+        except Exception as e:
+            print(f"Error setting up interval timer: {e}")
 
     def stop_interval_tracking(self):
-        if self.tracking_enabled and self.tracking_interval > 0:
-            self.toggle_tracking()
+        """Stop tracking after interval completes"""
+        try:
+            if self.tracking_enabled and self.tracking_interval > 0:
+                self.toggle_tracking()
+        except Exception as e:
+            print(f"Error stopping interval tracking: {e}")
 
     def toggle_database(self, checked):
         """Toggle database logging on/off"""
         self.db_enabled = checked
         if checked:
             self.last_db_save = None
+
+    def signal_handler(self, signum, frame):
+        """Handle interrupt signals gracefully"""
+        print("\nReceived interrupt signal. Cleaning up...")
+        self.quit_application()

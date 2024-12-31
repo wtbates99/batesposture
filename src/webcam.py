@@ -28,39 +28,47 @@ class Webcam:
 
         self._callback = callback
         self.is_running.set()
-        self.thread = Thread(target=self._update_frame)
+        self.thread = Thread(target=self._capture_loop)
         self.thread.daemon = True
         self.thread.start()
         return True
 
     def stop(self):
-        """Stop the camera capture and cleanup"""
+        """Stop the camera capture"""
         self.is_running.clear()
         if self.thread:
-            self.thread.join()
+            self.thread.join()  # Wait for thread to finish
         if self.cap:
             self.cap.release()
-            cv2.destroyAllWindows()
-            self.cap = None
-        self._latest_frame = None
-        self._latest_score = 0
+        self.cap = None
+        self.thread = None
 
-    def _update_frame(self):
-        """Background thread for frame capture and processing"""
+    def _capture_loop(self):
+        """Main capture loop running in separate thread"""
         while self.is_running.is_set():
             start_time = time.time()
 
-            ret, frame = self.cap.read()
-            if not ret:
+            try:
+                ret, frame = self.cap.read()
+                if not ret:
+                    print("Failed to read frame from camera")
+                    self.stop()
+                    break
+
+                if self._callback:
+                    try:
+                        frame, score, results = self._callback(frame)
+                        self._latest_score = score
+                        self._latest_pose_results = results
+                    except Exception as e:
+                        print(f"Error in frame callback: {e}")
+
+                self._latest_frame = frame
+
+            except Exception as e:
+                print(f"Error capturing frame: {e}")
                 self.stop()
                 break
-
-            if self._callback:
-                frame, score, results = self._callback(frame)
-                self._latest_score = score
-                self._latest_pose_results = results
-
-            self._latest_frame = frame
 
             processing_time = time.time() - start_time
             if processing_time < self.frame_time:
