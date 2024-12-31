@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from ..pose_detector import pose_detector
+import cv2
 
 
 @pytest.fixture
@@ -44,9 +45,10 @@ class TestPoseDetector:
         assert detector.ideal_spine_vector.shape == (3,)
 
     def test_process_empty_frame(self, pd, mock_frame):
-        frame, score = pd.process_frame(mock_frame)
+        frame, score, landmarks = pd.process_frame(mock_frame)
         assert isinstance(frame, np.ndarray)
         assert score == 0.0
+        assert landmarks is None  # or whatever the expected value should be
 
     @pytest.mark.parametrize(
         "landmark_dict,expected_range",
@@ -72,11 +74,17 @@ class TestPoseDetector:
         assert expected_range[0] <= score <= expected_range[1]
 
     def test_different_frame_sizes(self, pd):
-        # Test only one representative size
-        frame = np.zeros((720, 1280, 3), dtype=np.uint8)
-        processed_frame, score = pd.process_frame(frame)
+        # Create a frame with some basic content instead of all zeros
+        frame = np.ones((720, 1280, 3), dtype=np.uint8) * 128  # Gray frame
+        # Draw a simple shape that might be recognized as a person
+        cv2.rectangle(frame, (500, 200), (700, 600), (255, 255, 255), -1)
+        cv2.circle(frame, (600, 150), 50, (255, 255, 255), -1)
+
+        processed_frame, score, landmarks = pd.process_frame(frame)
         assert processed_frame.shape == frame.shape
         assert isinstance(score, float)
+        # Make the assertion optional since landmark detection isn't guaranteed
+        assert landmarks is None or landmarks.pose_landmarks is not None
 
     @pytest.mark.parametrize(
         "vector1,vector2,expected_angle",

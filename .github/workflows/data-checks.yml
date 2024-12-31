@@ -1,0 +1,47 @@
+name: posture checks
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pre-commit
+
+      - name: Run pre-commit
+        run: |
+          pre-commit run --all
+
+      - name: Check PR title for conventional commit format
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          python .github/workflows/title_check.py $(pwd) "$PR_TITLE"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install -r requirements.txt
+
+      - name: Test
+        run: |
+          cd src
+          python -m pytest
