@@ -4,6 +4,8 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+from pose_landmarks import POSTURE_LANDMARKS
+
 
 class PoseDetector:
     def __init__(
@@ -23,27 +25,7 @@ class PoseDetector:
             min_tracking_confidence=min_tracking_confidence,
             model_complexity=1,  # Use the most detailed model
         )
-        self.posture_landmarks = [
-            self.mp_pose.PoseLandmark.NOSE,
-            self.mp_pose.PoseLandmark.LEFT_EYE_INNER,
-            self.mp_pose.PoseLandmark.LEFT_EYE,
-            self.mp_pose.PoseLandmark.LEFT_EYE_OUTER,
-            self.mp_pose.PoseLandmark.RIGHT_EYE_INNER,
-            self.mp_pose.PoseLandmark.RIGHT_EYE,
-            self.mp_pose.PoseLandmark.RIGHT_EYE_OUTER,
-            self.mp_pose.PoseLandmark.LEFT_EAR,
-            self.mp_pose.PoseLandmark.RIGHT_EAR,
-            self.mp_pose.PoseLandmark.MOUTH_LEFT,
-            self.mp_pose.PoseLandmark.MOUTH_RIGHT,
-            self.mp_pose.PoseLandmark.LEFT_SHOULDER,
-            self.mp_pose.PoseLandmark.RIGHT_SHOULDER,
-            self.mp_pose.PoseLandmark.LEFT_ELBOW,
-            self.mp_pose.PoseLandmark.RIGHT_ELBOW,
-            self.mp_pose.PoseLandmark.LEFT_WRIST,
-            self.mp_pose.PoseLandmark.RIGHT_WRIST,
-            self.mp_pose.PoseLandmark.LEFT_HIP,
-            self.mp_pose.PoseLandmark.RIGHT_HIP,
-        ]
+        self.posture_landmarks = POSTURE_LANDMARKS
 
         # Pre-calculate the ideal vectors once
         self.ideal_neck_vector = np.array([0, -1, 0])
