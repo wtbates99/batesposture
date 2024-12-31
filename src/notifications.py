@@ -1,9 +1,9 @@
-import time
 import os
 import platform
+import time
 
 
-class notification_manager:
+class NotificationManager:
     def __init__(self):
         self.last_notification_time = 0
         self.notification_cooldown = 300  # 5 minutes between notifications
@@ -48,5 +48,5 @@ class notification_manager:
 
 
 if __name__ == "__main__":
-    notifier = notification_manager()
+    notifier = NotificationManager()
     notifier.check_and_notify(50)

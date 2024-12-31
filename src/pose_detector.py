@@ -1,10 +1,11 @@
+from typing import Tuple
+
 import cv2
 import mediapipe as mp
 import numpy as np
-from typing import Tuple
 
 
-class pose_detector:
+class PoseDetector:
     def __init__(
         self,
         min_detection_confidence=0.5,
