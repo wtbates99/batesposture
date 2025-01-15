@@ -37,6 +37,15 @@ The application leverages:
 
 ## Getting Started
 
+### Windows Guide
+Requires `python3.10`
+
+Can use `py -3.10 -m pip install -r requirements.txt`
+
+Make sure that you have the Visual C++ Redistributable
+
+If still having issues, may need to `py -3.10 -m pip install msvc-runtime`
+
 ### Linux Dependencies
 Required packages:
 ```bash
