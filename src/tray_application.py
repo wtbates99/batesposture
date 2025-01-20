@@ -2,9 +2,10 @@ from datetime import datetime, timedelta
 
 import cv2
 import numpy as np
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QActionGroup, QIcon, QImage, QPixmap
-from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PyQt6.QtWidgets import (QApplication, QDialog, QLabel, QMenu,
+                             QSystemTrayIcon, QVBoxLayout)
 
 from db_manager import DBManager
 from notifications import NotificationManager
@@ -147,12 +148,29 @@ class PostureTrackerTray(QSystemTrayIcon):
 
     def toggle_video(self):
         if self.video_window:
-            cv2.destroyWindow("Posture Detection")
+            # "Hide Video"
+            self.video_window.close()
             self.video_window = None
             self.toggle_video_action.setText("Show Video")
         else:
-            self.video_window = True
+            # "Show Video"
             self.toggle_video_action.setText("Hide Video")
+
+            # Create the dialog right away
+            self.video_window = QDialog()
+            self.video_window.setWindowTitle("Posture Detection")
+            self.video_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
+            self.video_label = QLabel("Waiting for first frame...")
+            self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            layout = QVBoxLayout()
+            layout.addWidget(self.video_label)
+            self.video_window.setLayout(layout)
+
+            self.video_window.destroyed.connect(self.on_video_window_closed)
+            self.video_window.resize(640, 480)
+            self.video_window.show()
 
     def update_tracking(self):
         if self.tracking_enabled:
@@ -182,9 +200,10 @@ class PostureTrackerTray(QSystemTrayIcon):
                         self._save_to_db(average_score)
 
                 self.notifier.check_and_notify(average_score)
+
+                # If the user wants to see the video
                 if self.video_window:
-                    cv2.imshow("Posture Detection", frame)
-                    cv2.waitKey(1)
+                    self.show_video_in_pyqt(frame)
 
     def _save_to_db(self, average_score):
         """Helper method to save pose data to database"""
@@ -277,3 +296,59 @@ class PostureTrackerTray(QSystemTrayIcon):
         """Handle interrupt signals gracefully"""
         print("\nReceived interrupt signal. Cleaning up...")
         self.quit_application()
+
+    def show_video_in_pyqt(self, frame):
+        # Create the QDialog (video_window) if it doesn't exist yet
+        if not self.video_window or not isinstance(self.video_window, QDialog):
+            self.video_window = QDialog()
+            self.video_window.setWindowTitle("Posture Detection")
+            # So the dialog is cleaned up when closed
+            self.video_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
+            # Create a QLabel to display video frames
+            self.video_label = QLabel()
+            self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            # Lay out the label in the dialog
+            layout = QVBoxLayout()
+            layout.addWidget(self.video_label)
+            self.video_window.setLayout(layout)
+
+            # Connect the dialog's close event to reset our toggle
+            # This approach uses an eventFilter or a dynamic connection
+            self.video_window.destroyed.connect(self.on_video_window_closed)
+            self.video_window.show()
+
+        # Convert frame (BGR) to RGB
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb_frame.shape
+        bytes_per_line = ch * w
+        q_img = QImage(
+            rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888
+        )
+
+        # Show the QImage as a QPixmap
+        pixmap = QPixmap.fromImage(q_img)
+        self.video_label.setPixmap(pixmap)
+
+    def on_video_window_closed(self, *_):
+        """Reset video window state when the user closes the QDialog."""
+        self.video_window = None
+        self.toggle_video_action.setText("Show Video")
+
+    def _create_pyqt_video_dialog(self):
+        if not self.video_window:
+            self.video_window = QDialog()
+            self.video_window.setWindowTitle("Posture Detection")
+            self.video_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
+            self.video_label = QLabel()
+            self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            layout = QVBoxLayout()
+            layout.addWidget(self.video_label)
+            self.video_window.setLayout(layout)
+
+            self.video_window.destroyed.connect(self.on_video_window_closed)
+            self.video_window.resize(640, 480)  # Just to be sure there's initial size
+            self.video_window.show()
