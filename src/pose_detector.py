@@ -17,7 +17,6 @@ class PoseDetector:
     ):
         self.frame_width = frame_width
         self.frame_height = frame_height
-        self.clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         self.mp_pose = mp.solutions.pose
         self.mp_draw = mp.solutions.drawing_utils
         self.pose = self.mp_pose.Pose(
