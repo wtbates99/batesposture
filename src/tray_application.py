@@ -131,11 +131,9 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.toggle_video_action.setEnabled(True)
 
             if self.tracking_interval > 0:
-                self.notifier.set_message(
-                    f"Checking posture (runs every {self.tracking_interval} minutes)"
+                self.notifier.set_interval_message(
+                    f"Checking posture every {self.tracking_interval} minutes"
                 )
-            else:
-                self.notifier.set_message("Please sit up straight!")
         else:
             self.frame_reader.stop()
             self.tracking_enabled = False
