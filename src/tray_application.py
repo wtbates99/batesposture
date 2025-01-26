@@ -4,8 +4,14 @@ import cv2
 import numpy as np
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QActionGroup, QIcon, QImage, QPixmap
-from PyQt6.QtWidgets import (QApplication, QDialog, QLabel, QMenu,
-                             QSystemTrayIcon, QVBoxLayout)
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QLabel,
+    QMenu,
+    QSystemTrayIcon,
+    QVBoxLayout,
+)
 
 from db_manager import DBManager
 from notifications import NotificationManager

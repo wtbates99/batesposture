@@ -12,7 +12,6 @@ class DBManager:
         self._create_tables()
 
     def _create_tables(self):
-        # Create table for overall posture scores
         self.create_table(
             "posture_scores",
             [
@@ -21,7 +20,6 @@ class DBManager:
             ],
         )
 
-        # Create table for individual landmark positions
         self.create_table(
             "pose_landmarks",
             [

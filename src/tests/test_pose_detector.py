@@ -15,6 +15,11 @@ def mock_landmarks():
     class mock_landmark:
         def __init__(self, x, y, z):
             self.x, self.y, self.z = x, y, z
+            self.visibility = 1.0
+            self.presence = 1.0
+
+        def HasField(self, field):
+            return field in ["visibility", "presence"]
 
     class mock_landmarks:
         def __init__(self, landmark_dict=None):
@@ -108,3 +113,86 @@ class TestPoseDetector:
         essential_landmarks = {"NOSE", "LEFT_SHOULDER", "RIGHT_SHOULDER"}
         landmark_names = {lm.name for lm in pd.posture_landmarks}
         assert essential_landmarks.issubset(landmark_names)
+
+    def test_frame_preprocessing(self, pd, mock_frame):
+        """Test that frame preprocessing (resize and enhancement) works correctly"""
+        frame = (
+            np.ones((1080, 1920, 3), dtype=np.uint8) * 128
+        )  # Different size gray frame
+        processed_frame, _, _ = pd.process_frame(frame)
+        assert processed_frame.shape == (720, 1280, 3)  # Check resize
+
+    def test_draw_landmarks(self, pd, mock_frame, mock_landmarks):
+        """Test landmark drawing functionality"""
+        landmarks = mock_landmarks(
+            {
+                0: (0.5, 0.5, 0),  # Nose
+                11: (0.4, 0.6, 0),  # Left shoulder
+                12: (0.6, 0.6, 0),  # Right shoulder
+                23: (0.4, 0.8, 0),  # Left hip
+                24: (0.6, 0.8, 0),  # Right hip
+            }
+        )
+
+        class MockResults:
+            def __init__(self, landmarks):
+                self.pose_landmarks = landmarks
+
+        results = MockResults(landmarks)
+        pd._draw_landmarks(mock_frame, results)
+        assert isinstance(mock_frame, np.ndarray)
+
+    @pytest.mark.parametrize(
+        "score_thresholds",
+        [
+            {"head_tilt": 0.8},
+            {"neck_angle": 30.0},
+            {"shoulder_level": 3.0},
+            {"shoulder_roll": 1.5},
+            {"spine_angle": 35.0},
+        ],
+    )
+    def test_custom_score_thresholds(self, score_thresholds):
+        """Test that different score thresholds affect scoring"""
+        detector = PoseDetector()
+        for key, value in score_thresholds.items():
+            detector.score_thresholds[key] = value
+        assert (
+            detector.score_thresholds[list(score_thresholds.keys())[0]]
+            == list(score_thresholds.values())[0]
+        )
+
+    def test_weights_sum(self, pd):
+        """Test that weights sum to approximately 1"""
+        assert abs(np.sum(pd.weights) - 1.0) < 1e-6
+
+    @pytest.mark.parametrize(
+        "invalid_vector",
+        [
+            np.array([0, 0, 0]),  # Zero vector
+            np.array([1e-7, 1e-7, 1e-7]),  # Near-zero vector
+        ],
+    )
+    def test_angle_between_edge_cases(self, pd, invalid_vector):
+        """Test angle calculation with edge cases"""
+        valid_vector = np.array([1, 0, 0])
+        angle = pd.angle_between(valid_vector, invalid_vector)
+        assert angle == 0.0  # Should handle zero/near-zero vectors gracefully
+
+    def test_posture_score_components(self, pd, mock_landmarks):
+        """Test individual components of posture scoring"""
+        # Test perfect posture
+        perfect_landmarks = mock_landmarks(
+            {
+                0: (0.5, 0.3, 0),  # Nose
+                7: (0.45, 0.3, 0),  # Left ear
+                8: (0.55, 0.3, 0),  # Right ear
+                11: (0.45, 0.5, 0),  # Left shoulder
+                12: (0.55, 0.5, 0),  # Right shoulder
+                23: (0.45, 0.7, 0),  # Left hip
+                24: (0.55, 0.7, 0),  # Right hip
+            }
+        )
+
+        score = pd._calculate_posture_score(perfect_landmarks)
+        assert score > 90  # Perfect posture should score very high
