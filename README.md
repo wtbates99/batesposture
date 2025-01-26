@@ -2,8 +2,6 @@
 
 **Revolutionize Your Workspace Ergonomics with Real-Time Posture Monitoring**
 
-![Posture Corrector in Action](static/notification.png)
-
 **OpenCV2 Posture Corrector** is a cutting-edge, real-time posture monitoring application designed to help you maintain optimal posture while working at your computer. Seamlessly integrated into your system tray, this application uses advanced computer vision to analyze your posture through your webcam, providing instant feedback and alerts to keep you ergonomically aligned.
 
 ---
@@ -21,15 +19,12 @@
 
 ---
 
-## 📸 Interface Preview
+## 🛠️ Technical Stack
 
-### System Tray Icon
-![Toolbar Icon](src/icon.png)
-*System tray icon indicating posture status*
-
-### Menu Options
-![Toolbar Menu](static/toolbar_options.png)
-*Available options in the toolbar menu*
+- **MediaPipe**: For precise pose detection and landmark tracking.
+- **OpenCV**: Powers video processing and visualization.
+- **PyQt6**: Ensures a sleek and responsive system tray interface.
+- **Platform-Specific Notifications**: Native alerts for Windows, macOS, and Linux.
 
 ---
 
@@ -89,15 +84,6 @@
 
 ---
 
-## 🛠️ Technical Stack
-
-- **MediaPipe**: For precise pose detection and landmark tracking.
-- **OpenCV**: Powers video processing and visualization.
-- **PyQt6**: Ensures a sleek and responsive system tray interface.
-- **Platform-Specific Notifications**: Native alerts for Windows, macOS, and Linux.
-
----
-
 ## 🔒 Privacy Commitment
 
 Your privacy is paramount. OpenCV2 Posture Corrector processes all video data locally on your machine. No video or posture data is ever stored, shared, or transmitted over the internet. Your data stays yours, always.
@@ -113,18 +99,22 @@ Your privacy is paramount. OpenCV2 Posture Corrector processes all video data lo
 
 ---
 
-## 🤝 Contributing
+## 📸 Interface Preview
 
-We welcome contributions! Please read our Contribution Guidelines to get started.
+### System Tray Icon
+![Toolbar Icon](src/icon.png)
+*System tray icon indicating posture status*
+
+### Menu Options
+![Toolbar Menu](static/toolbar_options.png)
+*Available options in the toolbar menu*
+
+### Notifications
+![Notification](static/notification.png)
+*Poor posture alert notification*
 
 ---
 
-## ⭐ Why Star This Project?
+## 🤝 Contributing
 
-If you find this project useful, consider giving it a star on GitHub! Starring helps us:
-
-- **Gain visibility**: Reach more developers and users.
-- **Encourage development**: Motivate us to keep improving and adding features.
-- **Grow the community**: Build a network of users and contributors.
-
-Thank you for your support! Together, we can promote better ergonomics for everyone.
+We welcome contributions! Please read our Contribution Guidelines to get started.
