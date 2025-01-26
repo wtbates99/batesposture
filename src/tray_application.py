@@ -25,6 +25,10 @@ import signal
 
 class PostureTrackerTray(QSystemTrayIcon):
     def __init__(self):
+        app = QApplication.instance()
+        app.setApplicationName("Posture Corrector")
+        app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "icon.png")))
+
         super().__init__()
 
         self.default_icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
