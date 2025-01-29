@@ -36,8 +36,8 @@ class Webcam:
     def stop(self):
         """Stop the camera capture"""
         self.is_running.clear()
-        if self.thread:
-            self.thread.join()  # Wait for thread to finish
+        if self.thread and self.thread != Thread.current_thread():
+            self.thread.join()
         if self.cap:
             self.cap.release()
         self.cap = None
