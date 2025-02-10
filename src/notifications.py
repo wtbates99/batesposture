@@ -1,14 +1,15 @@
 import os
 import platform
 import time
+from settings import get_setting
 
 
 class NotificationManager:
     def __init__(self):
         self.last_notification_time = 0
-        self.notification_cooldown = 300  # 5 minutes between notifications
-        self.poor_posture_threshold = 60  # Adjust this threshold as needed
-        self.posture_message = "Please sit up straight!"
+        self.notification_cooldown = get_setting("NOTIFICATION_COOLDOWN")
+        self.poor_posture_threshold = get_setting("POOR_POSTURE_THRESHOLD")
+        self.posture_message = get_setting("DEFAULT_POSTURE_MESSAGE")
         self.interval_message = None
 
     def set_interval_message(self, message):

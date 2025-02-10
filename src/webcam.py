@@ -2,16 +2,17 @@ import time
 from threading import Event, Thread
 
 import cv2
+from settings import get_setting
 
 
 class Webcam:
-    def __init__(self, camera_id=0, fps=30):
-        self.camera_id = camera_id
+    def __init__(self):
+        self.camera_id = get_setting("DEFAULT_CAMERA_ID")
         self.cap = None
         self.is_running = Event()
         self.thread = None
-        self.fps = fps
-        self.frame_time = 1 / fps
+        self.fps = get_setting("DEFAULT_FPS")
+        self.frame_time = 1 / self.fps
         self._latest_frame = None
         self._latest_score = 0
         self._callback = None

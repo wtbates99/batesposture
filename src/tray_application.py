@@ -19,6 +19,8 @@ from notifications import NotificationManager
 from pose_detector import PoseDetector
 from score_history import ScoreHistory
 from webcam import Webcam
+from settings import get_setting
+from settings_dialog import SettingsDialog
 
 import signal
 
@@ -27,11 +29,14 @@ class PostureTrackerTray(QSystemTrayIcon):
     def __init__(self):
         app = QApplication.instance()
         app.setApplicationName("Posture Corrector")
-        app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "icon.png")))
+        icon_path = os.path.join(os.path.dirname(__file__), get_setting("ICON_PATH"))
+        app.setWindowIcon(QIcon(icon_path))
 
         super().__init__()
 
-        self.default_icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
+        self.default_icon_path = os.path.join(
+            os.path.dirname(__file__), get_setting("ICON_PATH")
+        )
 
         self.setIcon(QIcon(self.default_icon_path))
 
@@ -51,7 +56,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.interval_timer.timeout.connect(self.check_interval)
         self.interval_timer.start(1000)
 
-        self.db = DBManager("posture_data.db")
+        self.db = DBManager(get_setting("DEFAULT_DB_NAME"))
         self.last_db_save = None
         self.db_enabled = False
 
@@ -72,19 +77,11 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.toggle_video_action.setEnabled(False)
 
         interval_menu = QMenu("Tracking Interval", menu)
-        interval_actions = {
-            "Continuous": 0,
-            "Every 15 minutes": 15,
-            "Every 30 minutes": 30,
-            "Every hour": 60,
-            "Every 2 hours": 120,
-            "Every 4 hours": 240,
-        }
-
         interval_group = QActionGroup(interval_menu)
         interval_group.setExclusive(True)
 
-        for label, minutes in interval_actions.items():
+        tracking_intervals = get_setting("TRACKING_INTERVALS")
+        for label, minutes in tracking_intervals.items():
             action = QAction(label, interval_menu, checkable=True)
             action.setData(minutes)
             action.triggered.connect(lambda checked, m=minutes: self.set_interval(m))
@@ -100,8 +97,12 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.toggle_db_action = QAction("Enable Database Logging", menu, checkable=True)
         self.toggle_db_action.setChecked(False)
         self.toggle_db_action.triggered.connect(self.toggle_database)
-
         menu.addAction(self.toggle_db_action)
+
+        self.settings_action = QAction("Settings", menu)
+        self.settings_action.triggered.connect(self.open_settings)
+        menu.addAction(self.settings_action)
+
         menu.addSeparator()
         menu.addAction(
             QAction("Quit Application", menu, triggered=self.quit_application)
@@ -393,3 +394,10 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.video_window.destroyed.connect(self.on_video_window_closed)
             self.video_window.resize(640, 480)
             self.video_window.show()
+
+    def open_settings(self):
+        """Open the settings dialog so the user can update customizable settings."""
+        dialog = SettingsDialog()
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            print("Settings updated.")
+            # If any of the settings should trigger an immediate app update, do so here.

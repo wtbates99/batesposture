@@ -1,17 +1,18 @@
 from time import time
 
 import numpy as np
+from settings import get_setting
 
 
 class ScoreHistory:
     def __init__(self):
-        self.buffer_size = 1000
+        self.buffer_size = get_setting("SCORE_BUFFER_SIZE")
         self.timestamps = np.zeros(self.buffer_size, dtype=np.float64)
         self.scores = np.zeros(self.buffer_size, dtype=np.float32)
         self.current_index = 0
         self.is_buffer_full = False
-        self.WINDOW_SIZE = 5
-        self.SCORE_THRESHOLD = 65
+        self.WINDOW_SIZE = get_setting("SCORE_WINDOW_SIZE")
+        self.SCORE_THRESHOLD = get_setting("SCORE_THRESHOLD")
 
     def add_score(self, score):
         current_time = time()

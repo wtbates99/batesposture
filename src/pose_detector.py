@@ -5,15 +5,16 @@ import mediapipe as mp
 import numpy as np
 
 from pose_landmarks import POSTURE_LANDMARKS
+from settings import get_setting
 
 
 class PoseDetector:
     def __init__(
         self,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-        frame_width=1280,
-        frame_height=720,
+        min_detection_confidence=get_setting("MIN_DETECTION_CONFIDENCE"),
+        min_tracking_confidence=get_setting("MIN_TRACKING_CONFIDENCE"),
+        frame_width=get_setting("FRAME_WIDTH"),
+        frame_height=get_setting("FRAME_HEIGHT"),
     ):
         self.frame_width = frame_width
         self.frame_height = frame_height
@@ -22,7 +23,7 @@ class PoseDetector:
         self.pose = self.mp_pose.Pose(
             min_detection_confidence=min_detection_confidence,
             min_tracking_confidence=min_tracking_confidence,
-            model_complexity=1,  # Use the most detailed model
+            model_complexity=get_setting("MODEL_COMPLEXITY"),
         )
         self.posture_landmarks = POSTURE_LANDMARKS
 
@@ -31,14 +32,8 @@ class PoseDetector:
         self.ideal_spine_vector = np.array([0, -1, 0])
 
         # Pre-calculate constants for performance
-        self.weights = np.array([0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05])
-        self.score_thresholds = {
-            "head_tilt": 1.2,  # head forward threshold
-            "neck_angle": 45.0,  # max neck angle
-            "shoulder_level": 5.0,  # shoulder level threshold
-            "shoulder_roll": 2.0,  # shoulder roll threshold
-            "spine_angle": 45.0,  # max spine angle
-        }
+        self.weights = np.array(get_setting("POSTURE_WEIGHTS"))
+        self.score_thresholds = get_setting("POSTURE_THRESHOLDS")
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, any]:
         # Resize frame to a consistent size for better performance
