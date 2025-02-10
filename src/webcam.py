@@ -1,4 +1,5 @@
 import time
+import threading
 from threading import Event, Thread
 
 import cv2
@@ -37,7 +38,7 @@ class Webcam:
     def stop(self):
         """Stop the camera capture"""
         self.is_running.clear()
-        if self.thread and self.thread != Thread.current_thread():
+        if self.thread and self.thread != threading.current_thread():
             self.thread.join()
         if self.cap:
             self.cap.release()
