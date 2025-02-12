@@ -337,14 +337,11 @@ class PostureTrackerTray(QSystemTrayIcon):
             print(f"Error stopping interval tracking: {e}")
 
     def toggle_database(self, checked):
-        """Toggle database logging on/off"""
         self.db_enabled = checked
         if checked:
             self.last_db_save = None
 
     def signal_handler(self, signum, frame):
-        """Handle interrupt signals gracefully"""
-        print("\nReceived interrupt signal. Cleaning up...")
         self.quit_application()
 
     def show_video_in_pyqt(self, frame):
@@ -374,7 +371,6 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.video_label.setPixmap(pixmap)
 
     def on_video_window_closed(self, *_):
-        """Reset video window state when the user closes the QDialog."""
         self.video_window = None
         self.toggle_video_action.setText("Show Video")
 
@@ -396,8 +392,18 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.video_window.show()
 
     def open_settings(self):
-        """Open the settings dialog so the user can update customizable settings."""
         dialog = SettingsDialog()
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            print("Settings updated.")
-            # If any of the settings should trigger an immediate app update, do so here.
+            self.reload_settings()
+
+    def reload_settings(self):
+        was_tracking = self.tracking_enabled
+        if was_tracking:
+            self.toggle_tracking()
+
+        self.frame_reader = Webcam()
+
+        self.setup_tray()
+
+        if was_tracking:
+            self.toggle_tracking()

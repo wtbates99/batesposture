@@ -19,6 +19,11 @@ IMMUTABLE_SETTINGS = {
         "shoulder_roll": 2.0,  # shoulder roll threshold
         "spine_angle": 45.0,  # max spine angle
     },
+    "MIN_DETECTION_CONFIDENCE": 0.5,
+    "MIN_TRACKING_CONFIDENCE": 0.5,
+    "SCORE_BUFFER_SIZE": 1000,
+    "SCORE_WINDOW_SIZE": 5,
+    "SCORE_THRESHOLD": 65,
 }
 
 # ---------------------------
@@ -29,27 +34,18 @@ CUSTOMIZABLE_SETTINGS = {
     "DEFAULT_CAMERA_ID": 0,
     "DEFAULT_FPS": 30,
     # Pose detection settings
-    "MIN_DETECTION_CONFIDENCE": 0.5,
-    "MIN_TRACKING_CONFIDENCE": 0.5,
     "FRAME_WIDTH": 1280,
     "FRAME_HEIGHT": 720,
     "MODEL_COMPLEXITY": 1,
-    # Score history settings
-    "SCORE_BUFFER_SIZE": 1000,
-    "SCORE_WINDOW_SIZE": 5,
-    "SCORE_THRESHOLD": 65,
     # Notification settings
     "NOTIFICATION_COOLDOWN": 300,  # 5 minutes
     "POOR_POSTURE_THRESHOLD": 60,
     "DEFAULT_POSTURE_MESSAGE": "Please sit up straight!",
-    # Tracking intervals
+    # Tracking intervals: defaults are now just 15, 30, and 60 minutes.
     "TRACKING_INTERVALS": {
-        "Continuous": 0,
         "Every 15 minutes": 15,
         "Every 30 minutes": 30,
         "Every hour": 60,
-        "Every 2 hours": 120,
-        "Every 4 hours": 240,
     },
 }
 
@@ -97,4 +93,4 @@ def update_setting(key, value):
 # Load user settings on module import
 load_user_settings()
 
-# Remove all the individual settings variables since they're now in the dictionaries
+# (The individual settings variables are not needed anymore—they're all in the dictionaries.)
