@@ -4,7 +4,7 @@ from datetime import datetime
 from pose_landmarks import POSTURE_LANDMARKS
 
 
-class DBManager:
+class Database:
     def __init__(self, db_path: str):
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
@@ -49,10 +49,8 @@ class DBManager:
     def save_pose_data(self, landmarks, score):
         timestamp = datetime.now().isoformat()
 
-        # Save overall score
         self.insert("posture_scores", [(timestamp, score)])
 
-        # Save landmark positions with names
         landmark_data = []
         for landmark_enum in self.posture_landmarks:
             landmark = landmarks.landmark[landmark_enum]

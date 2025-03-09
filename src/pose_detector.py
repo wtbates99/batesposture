@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Any
 
 import cv2
 import mediapipe as mp
@@ -11,11 +11,22 @@ from settings import get_setting
 class PoseDetector:
     def __init__(
         self,
-        min_detection_confidence=get_setting("MIN_DETECTION_CONFIDENCE"),
-        min_tracking_confidence=get_setting("MIN_TRACKING_CONFIDENCE"),
-        frame_width=get_setting("FRAME_WIDTH"),
-        frame_height=get_setting("FRAME_HEIGHT"),
-    ):
+        min_detection_confidence: float = get_setting("MIN_DETECTION_CONFIDENCE"),
+        min_tracking_confidence: float = get_setting("MIN_TRACKING_CONFIDENCE"),
+        frame_width: int = get_setting("FRAME_WIDTH"),
+        frame_height: int = get_setting("FRAME_HEIGHT"),
+    ) -> None:
+        """
+        Initialize the PoseDetector.
+
+        Args:
+            min_detection_confidence (float, optional): Minimum confidence for pose detection.
+                Defaults to value from settings.
+            min_tracking_confidence (float, optional): Minimum confidence for pose tracking.
+                Defaults to value from settings.
+            frame_width (int, optional): Width of the video frame. Defaults to value from settings.
+            frame_height (int, optional): Height of the video frame. Defaults to value from settings.
+        """
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.mp_pose = mp.solutions.pose
@@ -26,41 +37,73 @@ class PoseDetector:
             model_complexity=get_setting("MODEL_COMPLEXITY"),
         )
         self.posture_landmarks = POSTURE_LANDMARKS
-
-        # Pre-calculate the ideal vectors once
         self.ideal_neck_vector = np.array([0, -1, 0])
         self.ideal_spine_vector = np.array([0, -1, 0])
-
-        # Pre-calculate constants for performance
         self.weights = np.array(get_setting("POSTURE_WEIGHTS"))
         self.score_thresholds = get_setting("POSTURE_THRESHOLDS")
 
-    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, any]:
-        # Resize frame to a consistent size for better performance
-        # Height of 720p maintains good detail while being computationally efficient
-        frame = cv2.resize(frame, (1280, 720))
+    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, Any]:
+        """
+        Process a video frame to detect pose and calculate posture score.
 
-        # Apply adaptive histogram equalization to improve contrast in different lighting
+        Args:
+            frame (np.ndarray): Input video frame.
+
+        Returns:
+            Tuple[np.ndarray, float, Any]: Processed frame, posture score, and pose results.
+        """
+        try:
+            frame = self._preprocess_frame(frame)
+            results = self._detect_pose(frame)
+            if results.pose_landmarks:
+                self._draw_landmarks(frame, results)
+                posture_score = self._calculate_posture_score(results.pose_landmarks)
+                self._draw_posture_feedback(frame, posture_score)
+                return frame, posture_score, results
+            return frame, 0.0, None
+        except Exception as e:
+            print(f"Error processing frame: {e}")
+            return frame, 0.0, None
+
+    def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Preprocess the frame by resizing and enhancing with CLAHE.
+
+        Args:
+            frame (np.ndarray): Input frame.
+
+        Returns:
+            np.ndarray: Preprocessed frame.
+        """
+        frame = cv2.resize(frame, (self.frame_width, self.frame_height))
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-        l_channel, a_channel, b_channel = cv2.split(lab)
+        l_channel, a, b = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         l_channel = clahe.apply(l_channel)
-        enhanced = cv2.merge([l_channel, a_channel, b_channel])
-        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+        enhanced = cv2.merge([l_channel, a, b])
+        return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
-        # Convert to RGB for MediaPipe
-        rgb_frame = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
+    def _detect_pose(self, frame: np.ndarray) -> Any:
+        """
+        Detect pose in the frame using MediaPipe.
 
-        results = self.pose.process(rgb_frame)
+        Args:
+            frame (np.ndarray): Preprocessed frame.
 
-        if results.pose_landmarks:
-            self._draw_landmarks(frame, results)
-            posture_score = self._calculate_posture_score(results.pose_landmarks)
-            self._draw_posture_feedback(frame, posture_score)
-            return frame, posture_score, results
-        return frame, 0.0, None
+        Returns:
+            Any: Pose detection results.
+        """
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return self.pose.process(rgb_frame)
 
-    def _draw_landmarks(self, frame: np.ndarray, results) -> None:
+    def _draw_landmarks(self, frame: np.ndarray, results: Any) -> None:
+        """
+        Draw pose landmarks and posture-related lines on the frame.
+
+        Args:
+            frame (np.ndarray): Video frame to draw on.
+            results (Any): Pose detection results from MediaPipe.
+        """
         self.mp_draw.draw_landmarks(
             frame,
             results.pose_landmarks,
@@ -72,11 +115,9 @@ class PoseDetector:
                 color=(255, 255, 255), thickness=2
             ),
         )
-
         if results.pose_landmarks:
             h, w, _ = frame.shape
             landmarks = results.pose_landmarks.landmark
-
             mid_hip = np.array(
                 [
                     (
@@ -105,7 +146,6 @@ class PoseDetector:
                     / 2,
                 ]
             )
-
             cv2.line(
                 frame,
                 (int(mid_hip[0] * w), int(mid_hip[1] * h)),
@@ -116,94 +156,95 @@ class PoseDetector:
 
     @staticmethod
     def angle_between(v1: np.ndarray, v2: np.ndarray) -> float:
-        """Calculate angle between vectors using robust method."""
+        """
+        Calculate the angle in degrees between two vectors.
+
+        Args:
+            v1 (np.ndarray): First vector.
+            v2 (np.ndarray): Second vector.
+
+        Returns:
+            float: Angle in degrees.
+        """
         norm_v1 = np.linalg.norm(v1)
         norm_v2 = np.linalg.norm(v2)
-
-        # Avoid division by zero
         if norm_v1 < 1e-6 or norm_v2 < 1e-6:
             return 0.0
-
-        # Normalize vectors and calculate dot product
         v1_norm = v1 / norm_v1
         v2_norm = v2 / norm_v2
         dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
+        return float(np.degrees(np.arccos(dot_product)))
 
-        return np.degrees(np.arccos(dot_product))
+    def _calculate_posture_score(self, landmarks: Any) -> float:
+        """
+        Calculate the posture score based on pose landmarks.
 
-    def _calculate_posture_score(self, landmarks) -> float:
-        # Vectorized point extraction - more efficient than individual access
-        landmark_points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
+        Args:
+            landmarks (Any): Pose landmarks from MediaPipe.
 
-        # Get all relevant points in one go using array indexing
-        nose = landmark_points[self.mp_pose.PoseLandmark.NOSE]
-        ears = landmark_points[
+        Returns:
+            float: Posture score between 0 and 100.
+        """
+        points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
+        nose = points[self.mp_pose.PoseLandmark.NOSE]
+        ears = points[
             [self.mp_pose.PoseLandmark.LEFT_EAR, self.mp_pose.PoseLandmark.RIGHT_EAR]
         ]
-        shoulders = landmark_points[
+        shoulders = points[
             [
                 self.mp_pose.PoseLandmark.LEFT_SHOULDER,
                 self.mp_pose.PoseLandmark.RIGHT_SHOULDER,
             ]
         ]
-        hips = landmark_points[
+        hips = points[
             [self.mp_pose.PoseLandmark.LEFT_HIP, self.mp_pose.PoseLandmark.RIGHT_HIP]
         ]
 
-        # Efficient midpoint calculations using numpy operations
         mid_ear = np.mean(ears, axis=0)
         mid_shoulder = np.mean(shoulders, axis=0)
         mid_hip = np.mean(hips, axis=0)
 
-        # Vectorized score calculations
-        head_forward_offset = nose[2] - mid_ear[2]
         head_tilt_score = np.clip(
-            1 - abs(head_forward_offset) * self.score_thresholds["head_tilt"], 0, 1
+            1 - abs(nose[2] - mid_ear[2]) * self.score_thresholds["head_tilt"], 0, 1
         )
-
-        neck_vector = mid_ear - mid_shoulder
-        neck_angle = self.angle_between(neck_vector, self.ideal_neck_vector)
+        neck_angle = self.angle_between(mid_ear - mid_shoulder, self.ideal_neck_vector)
         neck_vertical_score = np.clip(
             1 - abs(neck_angle) / self.score_thresholds["neck_angle"], 0, 1
         )
 
-        # Efficient shoulder calculations
-        shoulder_diff = shoulders[0] - shoulders[1]  # left - right
+        shoulder_diff = shoulders[0] - shoulders[1]
         shoulder_scores = np.array(
             [
                 np.clip(
                     1 - abs(shoulder_diff[1]) * self.score_thresholds["shoulder_level"],
                     0,
                     1,
-                ),  # level
+                ),
                 np.clip(
                     1 - abs(shoulder_diff[2]) * self.score_thresholds["shoulder_roll"],
                     0,
                     1,
-                ),  # roll
+                ),
             ]
         )
 
-        spine_vector = mid_shoulder - mid_hip
-        spine_angle = self.angle_between(spine_vector, self.ideal_spine_vector)
+        spine_angle = self.angle_between(
+            mid_shoulder - mid_hip, self.ideal_spine_vector
+        )
         spine_alignment_score = np.clip(
             1 - abs(spine_angle) / self.score_thresholds["spine_angle"], 0, 1
         )
 
-        # Efficient head rotation calculation
-        ear_distance = np.linalg.norm(ears[1] - ears[0])  # right - left
+        ear_distance = np.linalg.norm(ears[1] - ears[0])
         shoulder_width = np.linalg.norm(shoulders[1] - shoulders[0])
         ideal_ear_distance = shoulder_width * 0.7
-
         head_rotation_score = np.clip(
             1 - abs(ear_distance - ideal_ear_distance) / (ideal_ear_distance + 1e-6),
             0,
             1,
         )
-
         head_side_tilt_score = np.clip(1 - abs(ears[0][1] - ears[1][1]) * 5, 0, 1)
 
-        # Vectorized final score calculation
         scores = np.array(
             [
                 head_tilt_score,
@@ -215,18 +256,21 @@ class PoseDetector:
                 head_side_tilt_score,
             ]
         )
-
-        final_score = np.clip(np.dot(scores, self.weights) * 100, 0, 100)
-
-        return final_score
+        return float(np.clip(np.dot(scores, self.weights) * 100, 0, 100))
 
     def _draw_posture_feedback(self, frame: np.ndarray, score: float) -> None:
+        """
+        Draw posture score and feedback on the frame.
+
+        Args:
+            frame (np.ndarray): Video frame to draw on.
+            score (float): Posture score.
+        """
         score_color = (
             0,
             int(min(255, score * 2.55)),
             int(min(255, (100 - score) * 2.55)),
         )
-
         cv2.putText(
             frame,
             f"Posture Score: {score:.1f}%",
@@ -246,3 +290,18 @@ class PoseDetector:
                 (0, 0, 255),
                 2,
             )
+
+
+if __name__ == "__main__":
+    detector = PoseDetector()
+    cap = cv2.VideoCapture(0)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame, score, _ = detector.process_frame(frame)
+        cv2.imshow("Posture Detection", frame)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+    cap.release()
+    cv2.destroyAllWindows()

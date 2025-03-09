@@ -2,14 +2,14 @@ import json
 import os
 
 # Path where user-customizable settings are saved/restored.
-USER_SETTINGS_FILE = "user_settings.json"
+USER_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
 
 # ---------------------------
 # Immutable settings - these cannot be changed through the UI.
 # ---------------------------
 IMMUTABLE_SETTINGS = {
-    "ICON_PATH": "icon.png",
-    "DEFAULT_DB_NAME": "posture_data.db",
+    "ICON_PATH": os.path.join(os.path.dirname(__file__), "static", "icon.png"),
+    "DEFAULT_DB_NAME": os.path.join(os.path.dirname(__file__), "posture_data.db"),
     # Core algorithm weights and thresholds that shouldn't be modified
     "POSTURE_WEIGHTS": [0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05],
     "POSTURE_THRESHOLDS": {
@@ -47,11 +47,13 @@ CUSTOMIZABLE_SETTINGS = {
         "Every 30 minutes": 30,
         "Every hour": 60,
     },
+    "TRACKING_DURATION_MINUTES": 15,
+    "ENABLE_DATABASE_LOGGING": False,
+    "DB_WRITE_INTERVAL_SECONDS": 900,
 }
 
 
 def load_user_settings():
-    """Load user settings from a JSON file and update the customizable settings."""
     try:
         if os.path.exists(USER_SETTINGS_FILE):
             with open(USER_SETTINGS_FILE, "r") as f:
@@ -62,7 +64,6 @@ def load_user_settings():
 
 
 def save_user_settings():
-    """Save the current customizable settings to a JSON file."""
     try:
         with open(USER_SETTINGS_FILE, "w") as f:
             json.dump(CUSTOMIZABLE_SETTINGS, f, indent=4)
@@ -71,7 +72,6 @@ def save_user_settings():
 
 
 def get_setting(key):
-    """Get a setting value, checking both immutable and customizable settings."""
     if key in IMMUTABLE_SETTINGS:
         return IMMUTABLE_SETTINGS[key]
     if key in CUSTOMIZABLE_SETTINGS:
@@ -80,7 +80,6 @@ def get_setting(key):
 
 
 def update_setting(key, value):
-    """Update a customizable setting. Raises KeyError if trying to update an immutable setting."""
     if key in IMMUTABLE_SETTINGS:
         raise KeyError(f"Cannot modify immutable setting: {key}")
     if key in CUSTOMIZABLE_SETTINGS:
@@ -90,7 +89,4 @@ def update_setting(key, value):
         raise KeyError(f"Unknown setting: {key}")
 
 
-# Load user settings on module import
 load_user_settings()
-
-# (The individual settings variables are not needed anymore—they're all in the dictionaries.)

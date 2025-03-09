@@ -4,7 +4,7 @@ import sys
 import psutil
 from PyQt6.QtWidgets import QApplication
 
-from tray_application import PostureTrackerTray
+from tray_interface import PostureTrackerTray
 
 
 def kill_existing_instance(lock_file):

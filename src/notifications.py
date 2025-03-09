@@ -4,12 +4,13 @@ import time
 from settings import get_setting
 
 
-class NotificationManager:
-    def __init__(self):
+class Notifications:
+    def __init__(self, icon_path):
         self.last_notification_time = 0
         self.notification_cooldown = get_setting("NOTIFICATION_COOLDOWN")
         self.poor_posture_threshold = get_setting("POOR_POSTURE_THRESHOLD")
         self.posture_message = get_setting("DEFAULT_POSTURE_MESSAGE")
+        self.icon_path = icon_path
         self.interval_message = None
 
     def set_interval_message(self, message):
@@ -36,34 +37,13 @@ class NotificationManager:
                 )
             )
         elif platform.system() == "Linux":
-            os.system(f'notify-send "{title}" "{message}"')
+            os.system(f'notify-send "{title}" "{message}" -i "{self.icon_path}"')
         else:
             from plyer import notification
 
             notification.notify(
                 title=title,
                 message=message,
-                app_icon=None,
+                app_icon=self.icon_path,
                 timeout=10,
             )
-
-
-if __name__ == "__main__":
-    notifier = NotificationManager()
-
-    notifier.set_interval_message("Checking posture every 5 minutes")
-    time.sleep(1)
-    notifier.set_interval_message("Checking posture every 3 minutes")
-    time.sleep(1)
-    notifier.set_interval_message("Checking posture every 1 minute")
-
-    notifier.check_and_notify(50)  # Should trigger notification
-
-    notifier.check_and_notify(50)  # Should not trigger (cooldown period)
-
-    notifier.set_interval_message("Checking posture every 10 minutes")
-
-    print("\nWaiting 5 seconds...")
-    time.sleep(5)
-    print("This posture alert should appear (after cooldown):")
-    notifier.check_and_notify(50)  # Should trigger (cooldown expired)
