@@ -1,10 +1,10 @@
 from time import time
 
 import numpy as np
-from settings import get_setting
+from util__settings import get_setting
 
 
-class ScoreHistory:
+class Scores:
     def __init__(self):
         self.buffer_size = get_setting("SCORE_BUFFER_SIZE")
         self.timestamps = np.zeros(self.buffer_size, dtype=np.float64)

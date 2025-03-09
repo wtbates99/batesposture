@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 )
 import cv2
 
-from settings import CUSTOMIZABLE_SETTINGS, save_user_settings
+from util__settings import CUSTOMIZABLE_SETTINGS, save_user_settings
 
 
 class SettingsInterface(QDialog):

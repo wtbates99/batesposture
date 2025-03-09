@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 
-from pose_landmarks import POSTURE_LANDMARKS
+from util__settings import POSTURE_LANDMARKS
 
 
 class Database:

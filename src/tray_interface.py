@@ -13,9 +13,9 @@ from PyQt6.QtWidgets import (
 from database import Database
 from notifications import Notifications
 from pose_detector import PoseDetector
-from score_history import ScoreHistory
+from util__scores import Scores
 from webcam import Webcam
-from settings import get_setting
+from util__settings import get_setting
 from settings_interface import SettingsInterface
 from util__create_score_icon import create_score_icon
 import signal
@@ -43,7 +43,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         """Initialize core components like webcam, detector, and managers."""
         self.frame_reader = Webcam()
         self.detector = PoseDetector()
-        self.scores = ScoreHistory()
+        self.scores = Scores()
         self.notifier = Notifications(icon_path=self.icon_path)
         self.db = Database(get_setting("DEFAULT_DB_NAME"))
         self.db_enabled = get_setting("ENABLE_DATABASE_LOGGING")

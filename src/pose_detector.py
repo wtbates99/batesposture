@@ -4,8 +4,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
-from pose_landmarks import POSTURE_LANDMARKS
-from settings import get_setting
+from util__settings import POSTURE_LANDMARKS, get_setting
 
 
 class PoseDetector:

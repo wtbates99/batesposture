@@ -1,9 +1,31 @@
 import json
 import os
+import mediapipe as mp
 
 # Path where user-customizable settings are saved/restored.
 USER_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
 
+POSTURE_LANDMARKS = [
+    mp.solutions.pose.PoseLandmark.NOSE,
+    mp.solutions.pose.PoseLandmark.LEFT_EYE_INNER,
+    mp.solutions.pose.PoseLandmark.LEFT_EYE,
+    mp.solutions.pose.PoseLandmark.LEFT_EYE_OUTER,
+    mp.solutions.pose.PoseLandmark.RIGHT_EYE_INNER,
+    mp.solutions.pose.PoseLandmark.RIGHT_EYE,
+    mp.solutions.pose.PoseLandmark.RIGHT_EYE_OUTER,
+    mp.solutions.pose.PoseLandmark.LEFT_EAR,
+    mp.solutions.pose.PoseLandmark.RIGHT_EAR,
+    mp.solutions.pose.PoseLandmark.MOUTH_LEFT,
+    mp.solutions.pose.PoseLandmark.MOUTH_RIGHT,
+    mp.solutions.pose.PoseLandmark.LEFT_SHOULDER,
+    mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER,
+    mp.solutions.pose.PoseLandmark.LEFT_ELBOW,
+    mp.solutions.pose.PoseLandmark.RIGHT_ELBOW,
+    mp.solutions.pose.PoseLandmark.LEFT_WRIST,
+    mp.solutions.pose.PoseLandmark.RIGHT_WRIST,
+    mp.solutions.pose.PoseLandmark.LEFT_HIP,
+    mp.solutions.pose.PoseLandmark.RIGHT_HIP,
+]
 # ---------------------------
 # Immutable settings - these cannot be changed through the UI.
 # ---------------------------
@@ -25,6 +47,7 @@ IMMUTABLE_SETTINGS = {
     "SCORE_WINDOW_SIZE": 5,
     "SCORE_THRESHOLD": 65,
 }
+
 
 # ---------------------------
 # Customizable settings - these can be modified by the user.

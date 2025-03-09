@@ -3,7 +3,7 @@ import threading
 from threading import Event, Thread
 
 import cv2
-from settings import get_setting
+from util__settings import get_setting
 
 
 class Webcam:
