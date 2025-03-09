@@ -132,11 +132,6 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.toggle_video_action.setEnabled(True)
         self.setIcon(create_score_icon(0))
 
-        if self.tracking_interval > 0:
-            self.notifier.set_interval_message(
-                f"Checking posture every {self.tracking_interval} minutes"
-            )
-
     def _stop_tracking(self):
         """Stop tracking posture."""
         self.frame_reader.stop()
@@ -242,6 +237,10 @@ class PostureTrackerTray(QSystemTrayIcon):
     def set_interval(self, minutes):
         """Set the tracking interval in minutes."""
         self.tracking_interval = minutes
+        if minutes > 0:
+            self.notifier.set_interval_message(
+                f"Checking posture every {minutes} minutes"
+            )
         self.last_tracking_time = None if minutes > 0 else self.last_tracking_time
         if minutes == 0 and not self.tracking_enabled:
             self.toggle_tracking()
