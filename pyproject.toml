@@ -1,0 +1,15 @@
+[project]
+name = "opencv2-posture-corrector"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mediapipe>=0.10.21",
+    "numpy>=1.26.4",
+    "opencv-python>=4.11.0.86",
+    "plyer>=2.1.0",
+    "psutil>=7.0.0",
+    "pyqt6>=6.9.1",
+    "pytest>=8.4.1",
+]

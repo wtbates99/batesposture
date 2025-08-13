@@ -1,7 +1,0 @@
-opencv-python
-mediapipe
-numpy
-pytest
-plyer
-PyQt6>=6.0.0
-psutil>=5.9.0
