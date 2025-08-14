@@ -1,9 +1,24 @@
 import json
 import os
+import sys
 import mediapipe as mp
 
 # Path where user-customizable settings are saved/restored.
 USER_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
+
+
+# Helper function to get the correct path for bundled resources
+def get_resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # Running in development mode
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 
 POSTURE_LANDMARKS = [
     mp.solutions.pose.PoseLandmark.NOSE,
@@ -30,7 +45,7 @@ POSTURE_LANDMARKS = [
 # Immutable settings - these cannot be changed through the UI.
 # ---------------------------
 IMMUTABLE_SETTINGS = {
-    "ICON_PATH": os.path.join(os.path.dirname(__file__), "static", "icon.png"),
+    "ICON_PATH": get_resource_path("src/static/icon.png"),
     "DEFAULT_DB_NAME": os.path.join(os.path.dirname(__file__), "posture_data.db"),
     # Core algorithm weights and thresholds that shouldn't be modified
     "POSTURE_WEIGHTS": [0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05],

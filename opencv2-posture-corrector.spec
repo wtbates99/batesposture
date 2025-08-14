@@ -22,10 +22,10 @@ matplotlib_modules = collect_submodules('matplotlib')
 # Define the main script
 main_script = os.path.join(current_dir, 'src', 'main.py')
 
-# Define data files to include
+# Define data files to include - Fix icon path handling
 data_files = [
-    # Static assets
-    (os.path.join(current_dir, 'src', 'static', 'icon.png'), 'src/static'),
+    # Static assets - Use relative path for better bundling
+    ('src/static/icon.png', 'src/static'),
 
     # Include all collected data files
     *mediapipe_data,
@@ -111,7 +111,6 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         'tkinter',
-        'PIL',
         'IPython',
         'jupyter',
         'pandas',
@@ -148,7 +147,7 @@ exe = EXE(
     target_arch=target_arch,
     codesign_identity=codesign_identity,
     entitlements_file=entitlements_file,
-    icon=os.path.join(current_dir, 'src', 'static', 'icon.png'),
+    icon='src/static/icon.png',  # Use relative path for icon
 )
 
 # Collection configuration
@@ -168,7 +167,7 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         coll,
         name='opencv2-posture-corrector.app',
-        icon=os.path.join(current_dir, 'src', 'static', 'icon.png'),
+        icon='src/static/icon.png',  # Use relative path for icon
         bundle_identifier='com.opencv2.posture.corrector',
         info_plist={
             'CFBundleName': 'OpenCV2 Posture Corrector',
@@ -180,7 +179,7 @@ if sys.platform == 'darwin':
             'CFBundleSignature': '????',
             'LSMinimumSystemVersion': '10.15.0',
             'NSHighResolutionCapable': True,
-            'LSUIElement': True,  # Makes it a background app (no dock icon)
+            'LSUIElement': False,  # Makes it a background app (no dock icon)
             'NSAppTransportSecurity': {
                 'NSAllowsArbitraryLoads': True
             },
