@@ -9,6 +9,7 @@ dependencies = [
     "numpy>=1.26.4",
     "opencv-python>=4.11.0.86",
     "plyer>=2.1.0",
+    "pre-commit>=4.3.0",
     "psutil>=7.0.0",
     "pyqt6>=6.9.1",
     "pytest>=8.4.1",
