@@ -1,51 +1,43 @@
-# OpenCV2 Posture Corrector 🖥️➡️🧘
+# OpenCV2 Posture Corrector
 
-**Revolutionize Your Workspace Ergonomics with Real-Time Posture Monitoring**
+A real-time posture monitoring application that uses computer vision to analyze your posture through your webcam. Integrated into your system tray, it provides instant feedback and alerts to help maintain proper ergonomics while working.
 
-**OpenCV2 Posture Corrector** is a cutting-edge, real-time posture monitoring application designed to help you maintain optimal posture while working at your computer. Seamlessly integrated into your system tray, this application uses advanced computer vision to analyze your posture through your webcam, providing instant feedback and alerts to keep you ergonomically aligned.
+## Features
 
----
+- Real-time posture scoring (0-100)
+- System tray integration
+- Visual feedback with color-coded scores
+- Configurable tracking intervals
+- Optional live video feed
+- Automatic posture alerts
+- Cross-platform support (Windows, macOS, Linux)
+- Local processing only - no data stored or transmitted
 
-## 🌟 Features
+## Technical Stack
 
-- **Real-Time Posture Scoring**: Get instant feedback with a posture score ranging from 0 to 100.
-- **System Tray Integration**: Minimalistic and unobtrusive, always available when you need it.
-- **Visual Feedback**: Color-coded score display for quick posture assessment.
-- **Customizable Tracking**: Adjust tracking intervals from continuous monitoring to 4-hour checks.
-- **Live Video Feed**: Optional video window to visualize posture analysis in real-time.
-- **Smart Notifications**: Receive automatic alerts when poor posture is detected.
-- **Cross-Platform**: Fully compatible with Windows, macOS, and Linux.
-- **Privacy First**: All processing is done locally—no data is ever stored or transmitted.
+- MediaPipe for pose detection
+- OpenCV for video processing
+- PyQt6 for system tray interface
+- Native platform notifications
 
----
+## Installation
 
-## 🛠️ Technical Stack
+### Windows
 
-- **MediaPipe**: For precise pose detection and landmark tracking.
-- **OpenCV**: Powers video processing and visualization.
-- **PyQt6**: Ensures a sleek and responsive system tray interface.
-- **Platform-Specific Notifications**: Native alerts for Windows, macOS, and Linux.
-
----
-
-## 🚀 Getting Started
-
-### **Windows Installation**
-
-1. Ensure you have Python 3.10 installed.
+1. Install Python 3.10
 2. Install dependencies:
    ```bash
    py -3.10 -m pip install -r requirements.txt
    ```
-3. Make sure you have the Visual C++ Redistributable installed.
-4. If issues persist, install the MSVC runtime:
+3. Install Visual C++ Redistributable if needed
+4. For MSVC runtime issues:
    ```bash
    py -3.10 -m pip install msvc-runtime
    ```
 
-### **Linux Installation**
+### Linux
 
-1. Install required dependencies:
+1. Install system dependencies:
    ```bash
    sudo apt install -y \
        libxcb1 \
@@ -55,7 +47,8 @@
        libxcb-render0 \
        libxcb-render-util0
    ```
-2. For additional features, install optional packages:
+
+2. Optional packages for additional features:
    ```bash
    sudo apt install -y \
        qt6-base-dev \
@@ -63,58 +56,30 @@
        libqt5x11extras5
    ```
 
-### **General Installation**
+### General
 
 1. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-2. Launch the application:
+
+2. Run the application:
    ```bash
    python src/main.py
    ```
 
-### 🎯 Basic Usage
+## Usage
 
-- **Start Monitoring**: Click the system tray icon and select "Start Tracking."
-- **Enable Video Feed**: Optionally enable the video window to see real-time posture analysis.
-- **Set Tracking Interval**: Choose your preferred monitoring frequency.
-- **Monitor Your Score**: Keep an eye on your posture score (0-100) via the tray icon.
-- **Receive Alerts**: Get notified when your posture needs correction.
+1. Click the system tray icon and select "Start Tracking"
+2. Optionally enable video feed to see real-time analysis
+3. Set your preferred tracking interval
+4. Monitor your posture score (0-100) via the tray icon
+5. Receive alerts when posture needs correction
 
----
+## Privacy
 
-## 🔒 Privacy Commitment
+All video processing happens locally on your machine. No data is stored, shared, or transmitted over the internet.
 
-Your privacy is paramount. OpenCV2 Posture Corrector processes all video data locally on your machine. No video or posture data is ever stored, shared, or transmitted over the internet. Your data stays yours, always.
+## Contributing
 
----
-
-## 📈 Future Roadmap
-
-- **Posture History**: Track and visualize your posture trends over time.
-- **Advanced Analytics**: Gain insights into your ergonomic habits.
-- **Customizable Alerts**: Tailor notifications to your specific needs.
-- **Integration with Productivity Tools**: Sync with calendars and productivity apps for smarter reminders.
-
----
-
-## 📸 Interface Preview
-
-### System Tray Icon
-![Toolbar Icon](src/icon.png)
-*System tray icon indicating posture status*
-
-### Menu Options
-![Toolbar Menu](static/toolbar_options.png)
-*Available options in the toolbar menu*
-
-### Notifications
-![Notification](static/notification.png)
-*Poor posture alert notification*
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Please read our Contribution Guidelines to get started.
+Contributions are welcome. Please read our contribution guidelines to get started.

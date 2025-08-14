@@ -1,7 +1,7 @@
 [project]
 name = "opencv2-posture-corrector"
 version = "0.1.0"
-description = "Add your description here"
+description = "Toolbar application that leverages OpenCV's powerful computer vision capabilities and MediaPipe's pose detection to create an intelligent posture monitoring system. Running discreetly in your system tray, it provides real-time feedback and gentle reminders when your posture needs attention."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
