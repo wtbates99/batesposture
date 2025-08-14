@@ -1,6 +1,5 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
-import time
 
 from ..notifications import Notifications
 
