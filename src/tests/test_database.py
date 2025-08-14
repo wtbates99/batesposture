@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-from database import Database
+from ..database import Database
 
 
 @pytest.fixture
@@ -14,7 +14,7 @@ def db_manager():
     manager.close()
 
 
-@patch("database.datetime")
+@patch("src.database.datetime")
 def test_save_pose_data(mock_datetime, db_manager):
     mock_time = datetime(2024, 1, 1, 12, 0)
     mock_datetime.now.return_value = mock_time
