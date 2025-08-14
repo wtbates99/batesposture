@@ -89,7 +89,18 @@ if sys.platform == 'darwin':  # macOS
     entitlements_file = None
 
     # Include macOS specific frameworks
-    frameworks = []
+    frameworks = [
+        'CoreFoundation',
+        'CoreGraphics',
+        'CoreVideo',
+        'AVFoundation',
+        'CoreMedia',
+        'QuartzCore',
+        'AppKit',
+        'Foundation',
+        'Security',
+        'SystemConfiguration'
+    ]
 
 elif sys.platform == 'win32':  # Windows
     # Windows specific settings
@@ -109,6 +120,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
+    frameworks=frameworks if sys.platform == 'darwin' else [],
     excludes=[
         'tkinter',
         'IPython',
@@ -179,9 +191,16 @@ if sys.platform == 'darwin':
             'CFBundleSignature': '????',
             'LSMinimumSystemVersion': '10.15.0',
             'NSHighResolutionCapable': True,
-            'LSUIElement': False,  # Makes it a background app (no dock icon)
+            'LSUIElement': True,  # Makes it a background app (no dock icon)
             'NSAppTransportSecurity': {
                 'NSAllowsArbitraryLoads': True
             },
+            # Camera permissions
+            'NSCameraUsageDescription': 'This app needs camera access to detect posture and provide corrections.',
+            'NSMicrophoneUsageDescription': 'This app may need microphone access for audio notifications.',
+            # Required for background operation
+            'NSBackgroundModes': ['background-processing'],
+            # App category
+            'LSApplicationCategoryType': 'public.app-category.utilities',
         },
     )
