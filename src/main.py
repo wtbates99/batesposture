@@ -4,7 +4,7 @@ import sys
 import psutil
 from PyQt6.QtWidgets import QApplication
 
-from tray_interface import PostureTrackerTray
+from application import ApplicationFacade
 
 
 def kill_existing_instance(lock_file):
@@ -42,8 +42,8 @@ def main():
             f.write(str(os.getpid()))
 
         app.setQuitOnLastWindowClosed(False)
-        tray = PostureTrackerTray()  # noqa: F841
-        exit_code = app.exec()
+        facade = ApplicationFacade(app)
+        exit_code = facade.run()
 
     finally:
         if os.path.exists(lock_file):

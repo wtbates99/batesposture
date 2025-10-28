@@ -1,79 +1,65 @@
-from typing import Tuple, Any
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, Tuple
 
 import cv2
+import json
 import mediapipe as mp
 import numpy as np
 
-from util__settings import POSTURE_LANDMARKS, get_setting
+from services.settings_service import SettingsService
+
+
+@dataclass
+class PoseDetectionResult:
+    results: Any
+    metrics: Dict[str, float]
+
+    @property
+    def pose_landmarks(self) -> Any:
+        return getattr(self.results, "pose_landmarks", None)
 
 
 class PoseDetector:
-    def __init__(
-        self,
-        min_detection_confidence: float = get_setting("MIN_DETECTION_CONFIDENCE"),
-        min_tracking_confidence: float = get_setting("MIN_TRACKING_CONFIDENCE"),
-        frame_width: int = get_setting("FRAME_WIDTH"),
-        frame_height: int = get_setting("FRAME_HEIGHT"),
-    ) -> None:
-        """
-        Initialize the PoseDetector.
+    def __init__(self, settings: SettingsService) -> None:
+        self._settings = settings
+        runtime = settings.runtime
+        ml_settings = settings.ml
 
-        Args:
-            min_detection_confidence (float, optional): Minimum confidence for pose detection.
-                Defaults to value from settings.
-            min_tracking_confidence (float, optional): Minimum confidence for pose tracking.
-                Defaults to value from settings.
-            frame_width (int, optional): Width of the video frame. Defaults to value from settings.
-            frame_height (int, optional): Height of the video frame. Defaults to value from settings.
-        """
-        self.frame_width = frame_width
-        self.frame_height = frame_height
+        self.frame_width = runtime.frame_width
+        self.frame_height = runtime.frame_height
         self.mp_pose = mp.solutions.pose
         self.mp_draw = mp.solutions.drawing_utils
         self.pose = self.mp_pose.Pose(
-            min_detection_confidence=min_detection_confidence,
-            min_tracking_confidence=min_tracking_confidence,
-            model_complexity=get_setting("MODEL_COMPLEXITY"),
+            min_detection_confidence=ml_settings.min_detection_confidence,
+            min_tracking_confidence=ml_settings.min_tracking_confidence,
+            model_complexity=ml_settings.model_complexity,
         )
-        self.posture_landmarks = POSTURE_LANDMARKS
+        self.posture_landmarks = settings.get_posture_landmarks()
         self.ideal_neck_vector = np.array([0, -1, 0])
         self.ideal_spine_vector = np.array([0, -1, 0])
-        self.weights = np.array(get_setting("POSTURE_WEIGHTS"))
-        self.score_thresholds = get_setting("POSTURE_THRESHOLDS")
+        self.weights = self._normalize_weights(ml_settings.posture_weights)
+        self.score_thresholds = self._normalize_thresholds(
+            ml_settings.posture_thresholds
+        )
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, Any]:
-        """
-        Process a video frame to detect pose and calculate posture score.
-
-        Args:
-            frame (np.ndarray): Input video frame.
-
-        Returns:
-            Tuple[np.ndarray, float, Any]: Processed frame, posture score, and pose results.
-        """
         try:
             frame = self._preprocess_frame(frame)
             results = self._detect_pose(frame)
             if results.pose_landmarks:
                 self._draw_landmarks(frame, results)
-                posture_score = self._calculate_posture_score(results.pose_landmarks)
+                metrics = self._compute_posture_metrics(results.pose_landmarks)
+                posture_score = metrics["posture_score"]
                 self._draw_posture_feedback(frame, posture_score)
-                return frame, posture_score, results
+                return frame, posture_score, PoseDetectionResult(results, metrics)
             return frame, 0.0, None
-        except Exception as e:
-            print(f"Error processing frame: {e}")
+        except Exception as exc:  # noqa: BLE001 - ensure downstream keeps running
+            print(f"Error processing frame: {exc}")
             return frame, 0.0, None
 
     def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
-        """
-        Preprocess the frame by resizing and enhancing with CLAHE.
-
-        Args:
-            frame (np.ndarray): Input frame.
-
-        Returns:
-            np.ndarray: Preprocessed frame.
-        """
         frame = cv2.resize(frame, (self.frame_width, self.frame_height))
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l_channel, a, b = cv2.split(lab)
@@ -83,26 +69,10 @@ class PoseDetector:
         return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
     def _detect_pose(self, frame: np.ndarray) -> Any:
-        """
-        Detect pose in the frame using MediaPipe.
-
-        Args:
-            frame (np.ndarray): Preprocessed frame.
-
-        Returns:
-            Any: Pose detection results.
-        """
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         return self.pose.process(rgb_frame)
 
     def _draw_landmarks(self, frame: np.ndarray, results: Any) -> None:
-        """
-        Draw pose landmarks and posture-related lines on the frame.
-
-        Args:
-            frame (np.ndarray): Video frame to draw on.
-            results (Any): Pose detection results from MediaPipe.
-        """
         self.mp_draw.draw_landmarks(
             frame,
             results.pose_landmarks,
@@ -117,33 +87,31 @@ class PoseDetector:
         if results.pose_landmarks:
             h, w, _ = frame.shape
             landmarks = results.pose_landmarks.landmark
-            mid_hip = np.array(
+            mid_hip = np.mean(
                 [
-                    (
-                        landmarks[self.mp_pose.PoseLandmark.LEFT_HIP].x
-                        + landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP].x
-                    )
-                    / 2,
-                    (
-                        landmarks[self.mp_pose.PoseLandmark.LEFT_HIP].y
-                        + landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP].y
-                    )
-                    / 2,
-                ]
+                    [
+                        landmarks[self.mp_pose.PoseLandmark.LEFT_HIP].x,
+                        landmarks[self.mp_pose.PoseLandmark.LEFT_HIP].y,
+                    ],
+                    [
+                        landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP].x,
+                        landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP].y,
+                    ],
+                ],
+                axis=0,
             )
-            mid_shoulder = np.array(
+            mid_shoulder = np.mean(
                 [
-                    (
-                        landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER].x
-                        + landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER].x
-                    )
-                    / 2,
-                    (
-                        landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER].y
-                        + landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER].y
-                    )
-                    / 2,
-                ]
+                    [
+                        landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER].x,
+                        landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER].y,
+                    ],
+                    [
+                        landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER].x,
+                        landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER].y,
+                    ],
+                ],
+                axis=0,
             )
             cv2.line(
                 frame,
@@ -155,16 +123,6 @@ class PoseDetector:
 
     @staticmethod
     def angle_between(v1: np.ndarray, v2: np.ndarray) -> float:
-        """
-        Calculate the angle in degrees between two vectors.
-
-        Args:
-            v1 (np.ndarray): First vector.
-            v2 (np.ndarray): Second vector.
-
-        Returns:
-            float: Angle in degrees.
-        """
         norm_v1 = np.linalg.norm(v1)
         norm_v2 = np.linalg.norm(v2)
         if norm_v1 < 1e-6 or norm_v2 < 1e-6:
@@ -174,16 +132,10 @@ class PoseDetector:
         dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
         return float(np.degrees(np.arccos(dot_product)))
 
-    def _calculate_posture_score(self, landmarks: Any) -> float:
-        """
-        Calculate the posture score based on pose landmarks.
+    def calculate_posture_metrics(self, landmarks: Any) -> Dict[str, float]:
+        return self._compute_posture_metrics(landmarks)
 
-        Args:
-            landmarks (Any): Pose landmarks from MediaPipe.
-
-        Returns:
-            float: Posture score between 0 and 100.
-        """
+    def _compute_posture_metrics(self, landmarks: Any) -> Dict[str, float]:
         points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
         nose = points[self.mp_pose.PoseLandmark.NOSE]
         ears = points[
@@ -255,16 +207,21 @@ class PoseDetector:
                 head_side_tilt_score,
             ]
         )
-        return float(np.clip(np.dot(scores, self.weights) * 100, 0, 100))
+        posture_score = float(np.clip(np.dot(scores, self.weights) * 100, 0, 100))
+        return {
+            "posture_score": posture_score,
+            "neck_angle": float(neck_angle),
+            "shoulder_vertical_delta": float(abs(shoulder_diff[1])),
+            "spine_angle": float(spine_angle),
+            "head_tilt_score": float(head_tilt_score),
+            "neck_vertical_score": float(neck_vertical_score),
+            "spine_alignment_score": float(spine_alignment_score),
+        }
+
+    def _calculate_posture_score(self, landmarks: Any) -> float:
+        return self._compute_posture_metrics(landmarks)["posture_score"]
 
     def _draw_posture_feedback(self, frame: np.ndarray, score: float) -> None:
-        """
-        Draw posture score and feedback on the frame.
-
-        Args:
-            frame (np.ndarray): Video frame to draw on.
-            score (float): Posture score.
-        """
         score_color = (
             0,
             int(min(255, score * 2.55)),
@@ -290,17 +247,26 @@ class PoseDetector:
                 2,
             )
 
+    @staticmethod
+    def _normalize_weights(weights: Any) -> np.ndarray:
+        if isinstance(weights, str):
+            try:
+                decoded = json.loads(weights)
+            except json.JSONDecodeError as exc:
+                raise ValueError("Invalid posture weights configuration") from exc
+            weights = decoded
+        if not isinstance(weights, (list, tuple)):
+            raise ValueError("Posture weights must be a list of numbers")
+        coerced = [float(value) for value in weights]
+        return np.array(coerced, dtype=float)
 
-if __name__ == "__main__":
-    detector = PoseDetector()
-    cap = cv2.VideoCapture(0)
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frame, score, _ = detector.process_frame(frame)
-        cv2.imshow("Posture Detection", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
-    cap.release()
-    cv2.destroyAllWindows()
+    @staticmethod
+    def _normalize_thresholds(thresholds: Any) -> Dict[str, float]:
+        if isinstance(thresholds, str):
+            try:
+                thresholds = json.loads(thresholds)
+            except json.JSONDecodeError as exc:
+                raise ValueError("Invalid posture thresholds configuration") from exc
+        if hasattr(thresholds, "items"):
+            return {str(key): float(value) for key, value in thresholds.items()}
+        raise ValueError("Invalid posture thresholds configuration")

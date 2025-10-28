@@ -2,7 +2,8 @@ import cv2
 import numpy as np
 import pytest
 
-from ..pose_detector import PoseDetector
+from ..ml.pose_detector import PoseDetector
+from ..services.settings_service import SettingsService
 
 
 @pytest.fixture
@@ -36,15 +37,20 @@ def mock_landmarks():
 
 
 @pytest.fixture
-def pd():
+def settings_service(tmp_path):
+    return SettingsService.for_testing(tmp_path / "pose_settings.ini")
+
+
+@pytest.fixture
+def pd(settings_service):
     """Fixture to provide a pose_detector instance for testing"""
-    return PoseDetector()
+    return PoseDetector(settings_service)
 
 
 class TestPoseDetector:
-    def test_initialization(self):
+    def test_initialization(self, settings_service):
         # Test with default values only
-        detector = PoseDetector()
+        detector = PoseDetector(settings_service)
         assert detector.pose is not None
         assert detector.ideal_neck_vector.shape == (3,)
         assert detector.ideal_spine_vector.shape == (3,)
@@ -152,9 +158,11 @@ class TestPoseDetector:
             {"spine_angle": 35.0},
         ],
     )
-    def test_custom_score_thresholds(self, score_thresholds):
+    def test_custom_score_thresholds(self, score_thresholds, tmp_path):
         """Test that different score thresholds affect scoring"""
-        detector = PoseDetector()
+        detector = PoseDetector(
+            SettingsService.for_testing(tmp_path / "thresholds.ini")
+        )
         for key, value in score_thresholds.items():
             detector.score_thresholds[key] = value
         assert (
