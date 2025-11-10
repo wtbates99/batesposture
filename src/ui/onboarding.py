@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 import cv2
+from PyQt6 import sip
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal, pyqtSlot, QObject
 from PyQt6.QtGui import QFont, QImage, QPixmap
 from PyQt6.QtWidgets import (
@@ -257,6 +258,10 @@ class CameraSetupPage(QWizardPage):
     def cleanupPage(self) -> None:  # noqa: N802 - Qt override
         self.preview.stop()
 
+    def stop_preview(self) -> None:
+        """Ensures the preview capture is released when leaving the page."""
+        self.preview.stop()
+
 
 class CalibrationPage(QWizardPage):
     def __init__(
@@ -361,11 +366,21 @@ class CalibrationPage(QWizardPage):
     def _cleanup_worker(self) -> None:
         if self._timeout and self._timeout.isActive():
             self._timeout.stop()
-        if self._thread and self._thread.isRunning():
-            self._thread.quit()
-            self._thread.wait(2000)
+        thread = self._thread
+        worker = self._worker
         self._thread = None
         self._worker = None
+
+        def _is_alive(obj: Optional[QObject]) -> bool:
+            return obj is not None and not sip.isdeleted(obj)
+
+        if _is_alive(thread):
+            if thread.isRunning():
+                thread.quit()
+                thread.wait(2000)
+            thread.deleteLater()
+        if _is_alive(worker):
+            worker.deleteLater()
 
     def isComplete(self) -> bool:  # noqa: N802 - Qt override
         return self._metrics is not None
@@ -389,9 +404,11 @@ class OnboardingWizard(QWizard):
         self.camera_page = CameraSetupPage(settings_service)
         self.calibration_page = CalibrationPage(settings_service)
 
-        self.addPage(self.welcome_page)
-        self.addPage(self.camera_page)
-        self.addPage(self.calibration_page)
+        self._welcome_page_id = self.addPage(self.welcome_page)
+        self._camera_page_id = self.addPage(self.camera_page)
+        self._calibration_page_id = self.addPage(self.calibration_page)
+        self._last_page_id = self.currentId()
+        self.currentIdChanged.connect(self._handle_page_change)
 
         self._metrics: Optional[CalibrationResult] = None
 
@@ -410,6 +427,11 @@ class OnboardingWizard(QWizard):
 
     def collected_metrics(self) -> Optional[CalibrationResult]:
         return self._metrics
+
+    def _handle_page_change(self, page_id: int) -> None:
+        if self._last_page_id == self._camera_page_id and self.camera_page is not None:
+            self.camera_page.stop_preview()
+        self._last_page_id = page_id
 
 
 def run_onboarding_if_needed(
