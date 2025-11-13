@@ -20,6 +20,7 @@ from typing import (
     Type,
     get_args,
     get_origin,
+    get_type_hints,
 )
 
 import mediapipe as mp
@@ -197,7 +198,9 @@ def _deserialize_value(expected_type: Type[Any], raw_value: Any, fallback: Any) 
     origin = get_origin(expected_type)
     if origin is None:
         expected = expected_type
-        if expected in (Any, type(fallback)):
+        if expected is Any:
+            return raw_value
+        if isinstance(expected, type) and isinstance(raw_value, expected):
             return raw_value
         return _coerce_primitive(expected, raw_value)
 
@@ -300,6 +303,7 @@ class SettingsStore:
             "profile": self.profile,
         }
         for section_name, section_obj in overrides.items():
+            type_hints = get_type_hints(type(section_obj))
             for field_info in fields(section_obj):
                 env_key = (
                     f"{ENV_PREFIX}_{section_name.upper()}_{field_info.name.upper()}"
@@ -307,8 +311,9 @@ class SettingsStore:
                 if env_key not in os.environ:
                     continue
                 raw_value = os.environ[env_key]
+                expected_type = type_hints.get(field_info.name, field_info.type)
                 coerced = _deserialize_value(
-                    field_info.type, raw_value, getattr(section_obj, field_info.name)
+                    expected_type, raw_value, getattr(section_obj, field_info.name)
                 )
                 setattr(section_obj, field_info.name, coerced)
 
@@ -483,10 +488,12 @@ class SettingsStore:
     def _load_group(self, group_name: str, section_obj: Any) -> None:
         self._settings.beginGroup(group_name)
         try:
+            type_hints = get_type_hints(type(section_obj))
             for field_info in fields(section_obj):
                 default = getattr(section_obj, field_info.name)
                 raw_value = self._settings.value(field_info.name, None)
-                value = _deserialize_value(field_info.type, raw_value, default)
+                expected_type = type_hints.get(field_info.name, field_info.type)
+                value = _deserialize_value(expected_type, raw_value, default)
                 setattr(section_obj, field_info.name, value)
         finally:
             self._settings.endGroup()
@@ -520,8 +527,10 @@ class SettingsStore:
         for field_info in fields(section):
             if field_info.name != field_name:
                 continue
+            type_hints = get_type_hints(type(section))
+            expected_type = type_hints.get(field_info.name, field_info.type)
             coerced = _deserialize_value(
-                field_info.type, value, getattr(section, field_name)
+                expected_type, value, getattr(section, field_name)
             )
             setattr(section, field_name, coerced)
             if persist:
