@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from threading import Event, Thread
@@ -9,6 +10,7 @@ import cv2
 
 from .settings_service import SettingsService
 
+logger = logging.getLogger(__name__)
 
 FrameCallback = Callable[[Any], Any]
 
@@ -36,20 +38,23 @@ class CameraService:
         self._callback = callback
         self._cap = cv2.VideoCapture(self._camera_id)
         if not self._cap.isOpened():
+            logger.error("Failed to open camera %s", self._camera_id)
             return False
         self._is_running.set()
         self._thread = Thread(target=self._capture_loop, daemon=True)
         self._thread.start()
+        logger.info("Camera %s started at %d FPS", self._camera_id, self._fps)
         return True
 
     def stop(self) -> None:
         self._is_running.clear()
         if self._thread and self._thread != threading.current_thread():
-            self._thread.join()
+            self._thread.join(timeout=2.0)
         if self._cap:
             self._cap.release()
         self._cap = None
         self._thread = None
+        logger.info("Camera stopped")
 
     def reload_settings(self) -> None:
         runtime = self._settings.runtime
@@ -61,10 +66,11 @@ class CameraService:
         while self._is_running.is_set():
             start_time = time.time()
             try:
-                assert self._cap is not None
+                if self._cap is None:
+                    break
                 ret, frame = self._cap.read()
                 if not ret:
-                    print("Failed to read frame from camera")
+                    logger.warning("Failed to read frame from camera; stopping capture")
                     self.stop()
                     break
 
@@ -75,16 +81,16 @@ class CameraService:
                         processed = self._callback(frame)
                         if isinstance(processed, tuple) and len(processed) == 3:
                             frame, latest_score, pose_results = processed
-                    except Exception as exc:  # noqa: BLE001 - surface capture issues
-                        print(f"Error in frame callback: {exc}")
+                    except Exception:  # noqa: BLE001
+                        logger.exception("Error in frame callback")
 
                 with self._lock:
                     self._latest_frame = frame
                     self._latest_score = latest_score
                     self._latest_pose_results = pose_results
 
-            except Exception as exc:  # noqa: BLE001 - ensure loop exits cleanly
-                print(f"Error capturing frame: {exc}")
+            except Exception:  # noqa: BLE001
+                logger.exception("Unexpected error in capture loop; stopping")
                 self.stop()
                 break
 

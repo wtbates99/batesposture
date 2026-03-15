@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 
@@ -6,36 +7,41 @@ from PyQt6.QtWidgets import QApplication
 
 from application import ApplicationFacade
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
-def kill_existing_instance(lock_file):
-    """Kill existing instance using PID from lock file"""
+
+def _kill_existing_instance(lock_file: str) -> None:
+    """Terminate a previous instance whose PID is stored in *lock_file*."""
     try:
-        with open(lock_file, "r") as f:
+        with open(lock_file) as f:
             old_pid = int(f.read().strip())
-
         try:
             process = psutil.Process(old_pid)
-            if "python" in process.name().lower():  # Verify it's a Python process
+            if "python" in process.name().lower():
                 process.terminate()
-                process.wait(timeout=3)  # Wait for process to terminate
+                process.wait(timeout=3)
+                logger.info("Terminated previous instance (PID %d)", old_pid)
         except (psutil.NoSuchProcess, psutil.TimeoutExpired):
             pass
-
     except (FileNotFoundError, ValueError):
         pass
 
-    # Remove stale lock file
     if os.path.exists(lock_file):
         os.remove(lock_file)
 
 
-def main():
+def main() -> None:
     app = QApplication(sys.argv)
 
     lock_file = os.path.join(os.path.expanduser("~"), ".posture_tracker.lock")
 
     if os.path.exists(lock_file):
-        kill_existing_instance(lock_file)
+        _kill_existing_instance(lock_file)
 
     try:
         with open(lock_file, "w") as f:

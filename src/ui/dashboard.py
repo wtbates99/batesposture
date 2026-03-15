@@ -8,27 +8,66 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import (
     QColor,
     QImage,
+    QLinearGradient,
     QPainter,
     QPainterPath,
     QPen,
     QPixmap,
     QPalette,
 )
-from PyQt6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QDialog, QFrame, QWidget
+from PyQt6.QtWidgets import (
+    QLabel,
+    QSizePolicy,
+    QVBoxLayout,
+    QHBoxLayout,
+    QDialog,
+    QFrame,
+    QWidget,
+)
+
+
+def _score_color(score: float) -> QColor:
+    """Interpolate red→amber→green for a score 0–100."""
+    s = max(0.0, min(100.0, score)) / 100.0
+    if s < 0.5:
+        t = s / 0.5
+        r, g, b = int(220 * (1 - t) + 240 * t), int(50 * (1 - t) + 160 * t), 40
+    else:
+        t = (s - 0.5) / 0.5
+        r, g, b = int(240 * (1 - t) + 52 * t), int(160 * (1 - t) + 199 * t), int(40 * (1 - t) + 89 * t)
+    return QColor(r, g, b)
+
+
+def _score_grade(score: float) -> str:
+    if score >= 85:
+        return "Excellent"
+    if score >= 70:
+        return "Good"
+    if score >= 55:
+        return "Fair"
+    return "Poor"
+
+
+def _format_duration(seconds: float) -> str:
+    minutes = int(seconds) // 60
+    secs = int(seconds) % 60
+    if minutes > 0:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
 
 
 class SparklineWidget(QWidget):
+    """Score history area chart with per-segment colour coding."""
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.values: List[float] = []
-        self.line_color = QColor("#2e7dff")
-        self.fill_color = QColor(46, 125, 255, 80)
+        self.fill_color = QColor(46, 125, 255, 60)
         self.background_color = QColor("#ffffff")
-        self.setMinimumHeight(80)
+        self.setMinimumHeight(70)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def set_colors(self, line: QColor, fill: QColor, background: QColor) -> None:
-        self.line_color = line
+    def set_colors(self, _line: QColor, fill: QColor, background: QColor) -> None:
         self.fill_color = fill
         self.background_color = background
         self.update()
@@ -37,43 +76,68 @@ class SparklineWidget(QWidget):
         self.values = list(values)
         self.update()
 
-    def paintEvent(self, event):  # noqa: N802 - Qt override
+    def paintEvent(self, event):  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect().adjusted(4, 4, -4, -4)
         painter.fillRect(rect, self.background_color)
 
         if len(self.values) < 2:
-            painter.setPen(QPen(self.line_color, 2.0))
-            painter.drawLine(
-                rect.left(), rect.center().y(), rect.right(), rect.center().y()
-            )
+            painter.setPen(QPen(QColor("#aaaaaa"), 1.5))
+            painter.drawLine(rect.left(), rect.center().y(), rect.right(), rect.center().y())
             return
 
         min_val = min(self.values)
         max_val = max(self.values)
         if abs(max_val - min_val) < 1e-5:
-            min_val -= 1.0
-            max_val += 1.0
+            min_val = max(0.0, min_val - 5)
+            max_val = min(100.0, max_val + 5)
 
-        path = QPainterPath()
-        for index, value in enumerate(self.values):
-            x = rect.left() + (index / (len(self.values) - 1)) * rect.width()
-            normalized = (value - min_val) / (max_val - min_val)
-            y = rect.bottom() - normalized * rect.height()
-            if index == 0:
-                path.moveTo(x, y)
-            else:
-                path.lineTo(x, y)
+        n = len(self.values)
 
-        fill_path = QPainterPath(path)
-        fill_path.lineTo(rect.right(), rect.bottom())
-        fill_path.lineTo(rect.left(), rect.bottom())
+        def _xy(index: int, value: float):
+            x = rect.left() + (index / (n - 1)) * rect.width()
+            norm = (value - min_val) / (max_val - min_val)
+            y = rect.bottom() - norm * rect.height()
+            return x, y
+
+        # Filled area
+        fill_path = QPainterPath()
+        x0, y0 = _xy(0, self.values[0])
+        fill_path.moveTo(x0, rect.bottom())
+        fill_path.lineTo(x0, y0)
+        for i in range(1, n):
+            xi, yi = _xy(i, self.values[i])
+            fill_path.lineTo(xi, yi)
+        fill_path.lineTo(_xy(n - 1, self.values[-1])[0], rect.bottom())
         fill_path.closeSubpath()
-
         painter.fillPath(fill_path, self.fill_color)
-        painter.setPen(QPen(self.line_color, 2.0))
-        painter.drawPath(path)
+
+        # Colour-coded line segments
+        for i in range(1, n):
+            x1, y1 = _xy(i - 1, self.values[i - 1])
+            x2, y2 = _xy(i, self.values[i])
+            avg = (self.values[i - 1] + self.values[i]) / 2
+            pen = QPen(_score_color(avg), 2.0)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+
+
+class _StatLabel(QLabel):
+    """Compact card-style label for a single statistic."""
+
+    def __init__(self, title: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._title = title
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._update_text("—")
+
+    def set_value(self, value: str) -> None:
+        self._update_text(value)
+
+    def _update_text(self, value: str) -> None:
+        self.setText(f"<small style='opacity:0.6'>{self._title}</small><br><b>{value}</b>")
 
 
 class PostureDashboard(QDialog):
@@ -84,6 +148,7 @@ class PostureDashboard(QDialog):
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
+        self.setWindowTitle("Posture Dashboard")
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -96,17 +161,41 @@ class PostureDashboard(QDialog):
         self.card.setObjectName("dashboardCard")
         card_layout = QVBoxLayout(self.card)
         card_layout.setContentsMargins(20, 20, 20, 20)
-        card_layout.setSpacing(16)
+        card_layout.setSpacing(12)
 
-        self.video_label = QLabel(self.tr("Waiting for frames..."))
+        # Video feed
+        self.video_label = QLabel(self.tr("Waiting for frames…"))
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_label.setMinimumSize(560, 320)
         self.video_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
 
+        # Sparkline
         self.sparkline = SparklineWidget()
 
+        # Stats row
+        stats_row = QWidget()
+        stats_layout = QHBoxLayout(stats_row)
+        stats_layout.setContentsMargins(0, 0, 0, 0)
+        stats_layout.setSpacing(6)
+        self._stat_current = _StatLabel(self.tr("Current"))
+        self._stat_avg = _StatLabel(self.tr("Session Avg"))
+        self._stat_min = _StatLabel(self.tr("Session Min"))
+        self._stat_max = _StatLabel(self.tr("Session Max"))
+        self._stat_streak = _StatLabel(self.tr("Best Streak"))
+        self._stat_duration = _StatLabel(self.tr("Duration"))
+        for stat in (
+            self._stat_current,
+            self._stat_avg,
+            self._stat_min,
+            self._stat_max,
+            self._stat_streak,
+            self._stat_duration,
+        ):
+            stats_layout.addWidget(stat)
+
+        # Coaching / alert text
         self.coaching_label = QLabel(
             self.tr("Settle into a neutral posture while we gather readings.")
         )
@@ -114,6 +203,7 @@ class PostureDashboard(QDialog):
 
         card_layout.addWidget(self.video_label)
         card_layout.addWidget(self.sparkline)
+        card_layout.addWidget(stats_row)
         card_layout.addWidget(self.coaching_label)
 
         outer_layout.addWidget(self.card)
@@ -138,24 +228,37 @@ class PostureDashboard(QDialog):
             background = QColor("#202124")
             foreground = QColor("#f1f3f4")
             accent = QColor("#8ab4f8")
-            fill = QColor(138, 180, 248, 90)
+            fill = QColor(138, 180, 248, 60)
+            stat_bg = "#2d2f33"
+            stat_border = "rgba(255,255,255,12)"
         else:
             background = QColor("#ffffff")
             foreground = QColor("#1a1c23")
             accent = QColor("#2e7dff")
-            fill = QColor(46, 125, 255, 80)
+            fill = QColor(46, 125, 255, 60)
+            stat_bg = "#f8f9fa"
+            stat_border = "rgba(0,0,0,10)"
 
         self.card.setStyleSheet(
-            "QFrame#dashboardCard {"
-            f"background-color: {background.name()};"
-            "border-radius: 16px;"
-            "border: 1px solid rgba(0,0,0,30);"
-            "}"
+            f"QFrame#dashboardCard {{"
+            f"  background-color: {background.name()};"
+            f"  border-radius: 18px;"
+            f"  border: 1px solid rgba(0,0,0,25);"
+            f"}}"
             f"QLabel {{ color: {foreground.name()}; }}"
         )
         self.coaching_label.setStyleSheet(
-            f"color: {foreground.name()}; font-weight: 600;"
+            f"color: {foreground.name()}; font-weight: 600; font-size: 13px;"
         )
+        stat_style = (
+            f"background: {stat_bg}; color: {foreground.name()}; font-size: 11px;"
+            f"border: 1px solid {stat_border}; border-radius: 8px; padding: 6px 8px;"
+        )
+        for stat in (
+            self._stat_current, self._stat_avg, self._stat_min,
+            self._stat_max, self._stat_streak, self._stat_duration,
+        ):
+            stat.setStyleSheet(stat_style)
         self.sparkline.set_colors(accent, fill, background)
 
     def update_frame(self, frame) -> None:
@@ -174,35 +277,49 @@ class PostureDashboard(QDialog):
         self.video_label.setPixmap(scaled)
 
     def update_score(
-        self, score: float, metrics: Optional[Dict[str, float]] = None
+        self,
+        score: float,
+        metrics: Optional[Dict[str, float]] = None,
+        session_stats: Optional[dict] = None,
     ) -> None:
         self.recent_scores.append(score)
         self.sparkline.update_values(list(self.recent_scores))
         self._update_coaching_text(score, metrics)
+        self._update_stats(score, session_stats)
+
+    def _update_stats(self, current: float, stats: Optional[dict]) -> None:
+        grade = _score_grade(current)
+        color = _score_color(current).name()
+        self._stat_current.set_value(
+            f"<span style='color:{color}'>{current:.0f}</span> <small>({grade})</small>"
+        )
+        if stats and stats.get("count", 0) > 0:
+            self._stat_avg.set_value(f"{stats['avg']:.0f}")
+            self._stat_min.set_value(f"<span style='color:#e05050'>{stats['min']:.0f}</span>")
+            self._stat_max.set_value(f"<span style='color:#4caf50'>{stats['max']:.0f}</span>")
+            best = stats.get("best_streak_s", 0.0)
+            streak_str = _format_duration(best) if best >= 5 else "—"
+            self._stat_streak.set_value(streak_str)
+            self._stat_duration.set_value(_format_duration(stats.get("duration_s", 0.0)))
+        else:
+            for stat in (self._stat_avg, self._stat_min, self._stat_max, self._stat_streak, self._stat_duration):
+                stat.set_value("—")
 
     def _update_coaching_text(
         self, score: float, metrics: Optional[Dict[str, float]]
     ) -> None:
         if score >= max(self.baseline_score - 5, 70):
-            message = self.tr(
-                "Nice alignment! Keep a relaxed breath and soft shoulders."
-            )
+            message = self.tr("Nice alignment! Keep a relaxed breath and soft shoulders.")
         else:
             cues: List[str] = []
             if metrics:
                 if metrics.get("neck_angle", 0.0) > 15.0:
-                    cues.append(
-                        self.tr("Gently draw your head back over your shoulders.")
-                    )
+                    cues.append(self.tr("Gently draw your head back over your shoulders."))
                 if metrics.get("shoulder_vertical_delta", 0.0) > 0.05:
                     cues.append(self.tr("Level your shoulders to center your posture."))
                 if metrics.get("spine_angle", 0.0) > 10.0:
                     cues.append(self.tr("Lengthen through your spine and sit tall."))
             if not cues:
-                cues.append(
-                    self.tr(
-                        "Reset by rolling your shoulders back and opening your chest."
-                    )
-                )
+                cues.append(self.tr("Reset by rolling your shoulders back and opening your chest."))
             message = " ".join(cues[:2])
         self.coaching_label.setText(message)
