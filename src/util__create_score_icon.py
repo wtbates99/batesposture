@@ -3,65 +3,57 @@ import cv2
 from PyQt6.QtGui import QIcon, QPixmap, QImage
 
 
-def create_score_icon(score):
-    img = np.zeros((64, 64, 4), dtype=np.uint8)
-    img[:, :, 3] = 0
+def create_score_icon(score: float) -> QIcon:
+    """Create a colour-coded circular tray icon with the posture score.
 
-    center = (32, 32)
+    Uses vectorised NumPy operations instead of nested pixel loops.
+    """
+    size = 64
+    img = np.zeros((size, size, 4), dtype=np.uint8)
+
+    center = size // 2
     radius = 30
 
-    for r in range(radius + 8, radius - 1, -1):
-        for y in range(64):
-            for x in range(64):
-                dist = np.sqrt((x - center[0]) ** 2 + (y - center[1]) ** 2)
-                if dist <= r:
-                    alpha = int(255 * (1 - dist / r) * (r - radius + 8) / (8))
-                    if r == radius:
-                        alpha = min(255, alpha * 1.5)
-                    img[y, x, 3] = max(img[y, x, 3], alpha)
+    # Build coordinate grids once
+    xs, ys = np.meshgrid(np.arange(size), np.arange(size))
+    dist = np.sqrt((xs - center) ** 2 + (ys - center) ** 2).astype(np.float32)
 
-    hue = int(score * 60 / 100)
-    hue = min(60, max(0, hue))
+    # Soft glow ring: blend alpha from outer edge to hard circle boundary
+    outer = float(radius + 8)
+    glow_mask = dist <= outer
+    glow_alpha = np.where(
+        glow_mask,
+        np.clip((1.0 - dist / outer) * ((outer - radius) / 8.0) * 255, 0, 255),
+        0,
+    ).astype(np.uint8)
+
+    # Hard circle keeps full opacity
+    hard_mask = dist <= radius
+    glow_alpha = np.where(hard_mask, 255, glow_alpha).astype(np.uint8)
+    img[:, :, 3] = glow_alpha
+
+    # Hue 0 (red) → 60 (green) mapped from score 0–100
+    hue = int(np.clip(score * 60 / 100, 0, 60))
     rgb_color = cv2.cvtColor(np.uint8([[[hue, 255, 255]]]), cv2.COLOR_HSV2BGR)[0][0]
     color = (int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2]), 255)
+
     font = cv2.FONT_HERSHEY_DUPLEX
     text = f"{int(score)}"
     font_scale = 2.0 if len(text) == 1 else (1.5 if len(text) == 2 else 1.2)
     thickness = 3
     text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
-    text_x = (64 - text_size[0]) // 2
-    text_y = (64 + text_size[1]) // 2
+    text_x = (size - text_size[0]) // 2
+    text_y = (size + text_size[1]) // 2
+
     temp = img.copy()
-    shadow_offsets = [(2, 2), (1, 1)]
-    shadow_alphas = [120, 180]
-    for offset, alpha in zip(shadow_offsets, shadow_alphas):
-        shadow_color = (0, 0, 0, alpha)
+    for offset, alpha in zip([(2, 2), (1, 1)], [120, 180]):
         cv2.putText(
-            temp,
-            text,
-            (text_x + offset[0], text_y + offset[1]),
-            font,
-            font_scale,
-            shadow_color,
-            thickness,
+            temp, text, (text_x + offset[0], text_y + offset[1]),
+            font, font_scale, (0, 0, 0, alpha), thickness,
         )
-
-    highlight_color = (255, 255, 255, 100)
-    cv2.putText(
-        temp,
-        text,
-        (text_x - 1, text_y - 1),
-        font,
-        font_scale,
-        highlight_color,
-        thickness,
-    )
-
+    cv2.putText(temp, text, (text_x - 1, text_y - 1), font, font_scale, (255, 255, 255, 100), thickness)
     cv2.putText(temp, text, (text_x, text_y), font, font_scale, color, thickness)
 
-    height, width, channel = temp.shape
-    bytes_per_line = 4 * width
-    q_img = QImage(
-        temp.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888
-    )
+    h, w, _ = temp.shape
+    q_img = QImage(temp.data, w, h, 4 * w, QImage.Format.Format_RGBA8888)
     return QIcon(QPixmap.fromImage(q_img))

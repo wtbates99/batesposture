@@ -1,10 +1,11 @@
 [project]
 name = "opencv2-posture-corrector"
 version = "0.1.0"
-description = "Toolbar application that leverages OpenCV's powerful computer vision capabilities and MediaPipe's pose detection to create an intelligent posture monitoring system. Running discreetly in your system tray, it provides real-time feedback and gentle reminders when your posture needs attention."
+description = "Discreet system-tray posture coach powered by MediaPipe and OpenCV."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "anthropic>=0.40.0",
     "mediapipe>=0.10.21",
     "numpy>=1.26.4",
     "opencv-python>=4.11.0.86",
@@ -12,5 +13,23 @@ dependencies = [
     "pre-commit>=4.3.0",
     "psutil>=7.0.0",
     "pyqt6>=6.9.1",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
     "pytest>=8.4.1",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+filterwarnings = [
+    "ignore:Type google._upb._message.*:DeprecationWarning",
+]
+
+[tool.uv]
+package = false
+
+# Run the app:   uv run python src/main.py
+# Run tests:     uv run --group dev python -m pytest
+# Install deps:  uv sync --all-groups

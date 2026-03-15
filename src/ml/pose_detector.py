@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 
@@ -9,6 +10,8 @@ import mediapipe as mp
 import numpy as np
 
 from services.settings_service import SettingsService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -55,8 +58,8 @@ class PoseDetector:
                 self._draw_posture_feedback(frame, posture_score)
                 return frame, posture_score, PoseDetectionResult(results, metrics)
             return frame, 0.0, None
-        except Exception as exc:  # noqa: BLE001 - ensure downstream keeps running
-            print(f"Error processing frame: {exc}")
+        except Exception:  # noqa: BLE001 - ensure downstream keeps running
+            logger.exception("Error processing frame")
             return frame, 0.0, None
 
     def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
