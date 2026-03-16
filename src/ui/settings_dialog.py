@@ -34,6 +34,14 @@ from services.settings_service import SettingsService
 
 
 class SettingsDialog(QDialog):
+    """Multi-section settings dialog for Camera, Notifications, Tracking, and Advanced tuning.
+
+    Sections are listed in a sidebar; the Advanced section is hidden behind a
+    "Show advanced controls" checkbox to avoid overwhelming casual users.
+    All inputs are validated before the dialog accepts; errors are shown inline.
+    On OK, changes are written to SettingsService and persisted immediately.
+    """
+
     SECTION_DEFS = [
         ("camera", "Camera & Video", QStyle.StandardPixmap.SP_ComputerIcon),
         (
@@ -95,7 +103,7 @@ class SettingsDialog(QDialog):
         card.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(card)
 
-        title = QLabel("Personalized posture coaching")
+        title = QLabel("Posture settings")
         title_font = QFont(title.font())
         title_font.setPointSize(title_font.pointSize() + 2)
         title_font.setBold(True)

@@ -21,7 +21,7 @@ from ml.pose_detector import PoseDetectionResult, PoseDetector
 from services.camera_service import CameraService
 from services.notification_service import NotificationService
 from services.score_service import ScoreService
-from services.settings_service import SettingsService, _default_tracking_intervals
+from services.settings_service import BREAK_REMINDER_MINUTES, SettingsService, _default_tracking_intervals
 from services.task_scheduler import TaskScheduler
 from ui.dashboard import PostureDashboard
 from ui.onboarding import run_onboarding_if_needed
@@ -31,10 +31,21 @@ from util__create_score_icon import create_score_icon
 logger = logging.getLogger(__name__)
 
 # How long (minutes) of continuous tracking before suggesting a break
-_BREAK_REMINDER_MINUTES = 50
+_BREAK_REMINDER_MINUTES = BREAK_REMINDER_MINUTES
 
 
 class PostureTrackerTray(QSystemTrayIcon):
+    """Main application controller embedded in the system tray.
+
+    Owns the tracking lifecycle (start / stop / interval scheduling), orchestrates
+    the camera → scoring → notification pipeline, manages the dashboard window and
+    settings dialog, and handles graceful shutdown.
+
+    Frame updates run on a 100 ms QTimer; interval checks run on a 1 s QTimer (both
+    via TaskScheduler). Settings reloads use CameraService.pause_processing() to avoid
+    mutating shared state while the camera thread is mid-frame.
+    """
+
     def __init__(
         self,
         settings: SettingsService,
@@ -216,8 +227,8 @@ class PostureTrackerTray(QSystemTrayIcon):
             self._settings.runtime.tracking_intervals = dict(normalized)
             try:
                 self._settings.save_all()
-            except Exception:  # noqa: BLE001
-                pass
+            except OSError as exc:
+                logger.warning("Could not persist normalised tracking intervals: %s", exc)
         return normalized
 
     def _coerce_interval_mapping(self, raw: object) -> Dict[str, int]:
@@ -326,9 +337,14 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.toggle_dashboard_action.setText("Show Dashboard")
         else:
             profile = self._settings.profile
+            history = None
+            if self._database:
+                rows = self._database.load_dashboard_history()
+                history = [score for _, score in rows]
             self.video_window = PostureDashboard(
                 baseline_score=profile.baseline_posture_score,
                 preferred_theme=profile.preferred_theme,
+                history=history,
             )
             self.video_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
             self.video_window.destroyed.connect(self._on_dashboard_closed)
@@ -337,6 +353,13 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.toggle_dashboard_action.setText("Hide Dashboard")
 
     def _on_dashboard_closed(self) -> None:
+        if self._database and isinstance(self.video_window, PostureDashboard):
+            import time as _time
+            scores = self.video_window.get_history()
+            now = _time.time()
+            step = 1.0
+            pairs = [(now - (len(scores) - i - 1) * step, s) for i, s in enumerate(scores)]
+            self._database.save_dashboard_history(pairs)
         self.video_window = None
         self.toggle_dashboard_action.setText("Show Dashboard")
 
@@ -545,8 +568,9 @@ class PostureTrackerTray(QSystemTrayIcon):
                 self.toggle_tracking_action, self.interval_menu
             )
 
-        self._camera_service.reload_settings()
-        self._scores.reload(self._settings)
+        with self._camera_service.pause_processing():
+            self._camera_service.reload_settings()
+            self._scores.reload(self._settings)
 
     # ------------------------
     # Shutdown

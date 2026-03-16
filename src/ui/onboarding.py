@@ -22,7 +22,11 @@ from PyQt6.QtWidgets import (
 )
 
 from ml.pose_detector import PoseDetector
-from services.settings_service import SettingsService
+from services.settings_service import (
+    CALIBRATION_DURATION_SECONDS,
+    CALIBRATION_TIMEOUT_MARGIN_SECONDS,
+    SettingsService,
+)
 
 
 @dataclass
@@ -94,10 +98,21 @@ class CameraPreviewWidget(QLabel):
 
 
 class CalibrationWorker(QObject):
+    """Background QObject that captures a baseline posture sample on a worker QThread.
+
+    Opens the camera, runs PoseDetector for ``duration_seconds`` (default:
+    CALIBRATION_DURATION_SECONDS = 6), averages posture_score / neck_angle /
+    shoulder_vertical_delta across collected frames, and emits either
+    ``finished(CalibrationResult)`` or ``failed(str)``.
+
+    A QTimer in CalibrationPage cancels the worker after
+    ``duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS`` to handle camera hangs.
+    """
+
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, settings: SettingsService, duration_seconds: int = 6) -> None:
+    def __init__(self, settings: SettingsService, duration_seconds: int = CALIBRATION_DURATION_SECONDS) -> None:
         super().__init__()
         self._settings = settings
         self._duration = duration_seconds
@@ -189,6 +204,8 @@ class CalibrationWorker(QObject):
 
 
 class WelcomePage(QWizardPage):
+    """Opening wizard page — introduces the three-step onboarding flow."""
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setTitle(self.tr("Welcome to Posture Coach"))
@@ -225,6 +242,12 @@ class WelcomePage(QWizardPage):
 
 
 class CameraSetupPage(QWizardPage):
+    """Wizard page showing a live camera preview for framing guidance.
+
+    Starts CameraPreviewWidget when the page is entered and stops it on exit
+    to release the capture handle before CalibrationWorker opens the same camera.
+    """
+
     def __init__(
         self, settings: SettingsService, parent: Optional[QWidget] = None
     ) -> None:
@@ -264,6 +287,13 @@ class CameraSetupPage(QWizardPage):
 
 
 class CalibrationPage(QWizardPage):
+    """Wizard page that runs a 6-second baseline calibration via CalibrationWorker.
+
+    Displays live status and results. The page is only "complete" (wizard's Next/Finish
+    enabled) after a successful CalibrationResult is received. A timeout timer cancels
+    a hung worker after duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS seconds.
+    """
+
     def __init__(
         self, settings: SettingsService, parent: Optional[QWidget] = None
     ) -> None:
@@ -331,7 +361,7 @@ class CalibrationPage(QWizardPage):
             self._timeout = QTimer(self)
             self._timeout.setSingleShot(True)
             self._timeout.timeout.connect(self._handle_timeout)
-        self._timeout.start((worker.duration + 2) * 1000)
+        self._timeout.start((worker.duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS) * 1000)
 
     def _handle_success(self, result: CalibrationResult) -> None:
         self._metrics = result

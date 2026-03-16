@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import json
 import os
 import sys
@@ -31,6 +30,15 @@ SETTINGS_SCHEMA_VERSION = "1.1.0"
 SETTINGS_ORGANIZATION = "PostureCorrector"
 SETTINGS_APPLICATION = "PostureApp"
 ENV_PREFIX = "POSTURE"
+
+# Named defaults — import these in other modules instead of repeating magic numbers
+POOR_POSTURE_THRESHOLD_DEFAULT: int = 60
+SCORE_THRESHOLD_DEFAULT: int = 65
+DEFAULT_POSTURE_WEIGHTS: tuple[float, ...] = (0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05)
+BREAK_REMINDER_MINUTES: int = 50
+CALIBRATION_DURATION_SECONDS: int = 6
+CALIBRATION_TIMEOUT_MARGIN_SECONDS: int = 6
+
 LEGACY_USER_SETTINGS_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../user_settings.json")
 )
@@ -86,7 +94,7 @@ def _default_posture_thresholds() -> Dict[str, float]:
 
 
 def _default_posture_weights() -> List[float]:
-    return [0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05]
+    return list(DEFAULT_POSTURE_WEIGHTS)
 
 
 @dataclass(frozen=True)
@@ -108,7 +116,7 @@ class RuntimeSettings:
     frame_width: int = 1280
     frame_height: int = 720
     notification_cooldown: int = 300
-    poor_posture_threshold: int = 60
+    poor_posture_threshold: int = POOR_POSTURE_THRESHOLD_DEFAULT
     default_posture_message: str = "Please sit up straight!"
     tracking_intervals: Dict[str, int] = field(
         default_factory=_default_tracking_intervals
@@ -118,6 +126,7 @@ class RuntimeSettings:
     db_write_interval_seconds: int = 900
     notifications_enabled: bool = True
     focus_mode_enabled: bool = False
+    adaptive_resolution: bool = False
 
 
 @dataclass
@@ -131,7 +140,8 @@ class MLTuningSettings:
     )
     score_buffer_size: int = 1000
     score_window_size: int = 5
-    score_threshold: int = 65
+    score_threshold: int = SCORE_THRESHOLD_DEFAULT
+    enable_gpu: bool = False
 
 
 @dataclass
@@ -387,10 +397,7 @@ class SettingsStore:
         try:
             decoded = json.loads(payload)
         except json.JSONDecodeError:
-            try:
-                decoded = ast.literal_eval(payload)
-            except (ValueError, SyntaxError):
-                decoded = None
+            decoded = None
         if isinstance(decoded, Mapping):
             return SettingsStore._coerce_tracking_intervals(decoded)
         if isinstance(decoded, Iterable) and not isinstance(decoded, (str, bytes)):
@@ -480,10 +487,7 @@ class SettingsStore:
         try:
             return json.loads(payload)
         except json.JSONDecodeError:
-            try:
-                return ast.literal_eval(payload)
-            except (ValueError, SyntaxError):
-                return None
+            return None
 
     def _load_group(self, group_name: str, section_obj: Any) -> None:
         self._settings.beginGroup(group_name)
@@ -595,6 +599,8 @@ KEY_TO_SECTION_FIELD: Dict[str, Tuple[str, str]] = {
     "DB_WRITE_INTERVAL_SECONDS": ("runtime", "db_write_interval_seconds"),
     "NOTIFICATIONS_ENABLED": ("runtime", "notifications_enabled"),
     "FOCUS_MODE_ENABLED": ("runtime", "focus_mode_enabled"),
+    "ADAPTIVE_RESOLUTION": ("runtime", "adaptive_resolution"),
+    "ENABLE_GPU": ("ml", "enable_gpu"),
     "HAS_COMPLETED_ONBOARDING": ("profile", "has_completed_onboarding"),
     "BASELINE_POSTURE_SCORE": ("profile", "baseline_posture_score"),
     "BASELINE_NECK_ANGLE": ("profile", "baseline_neck_angle"),

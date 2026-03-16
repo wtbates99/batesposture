@@ -8,6 +8,13 @@ from .settings_service import SettingsService
 
 
 class NotificationService:
+    """Sends desktop notifications for posture alerts and tracking status changes.
+
+    Respects ``notifications_enabled`` and ``focus_mode_enabled`` runtime settings.
+    Implements a cooldown (``notification_cooldown`` seconds, default 300) to prevent
+    repeated alerts during sustained poor posture.
+    """
+
     def __init__(self, settings: SettingsService, icon_path: str) -> None:
         self._settings = settings
         self._icon_path = icon_path
