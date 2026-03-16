@@ -1,4 +1,5 @@
 import logging
+import logging.handlers
 import os
 import sys
 
@@ -7,11 +8,33 @@ from PyQt6.QtWidgets import QApplication
 
 from application import ApplicationFacade
 
+_LOG_FORMAT = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
+_LOG_DATE_FMT = "%H:%M:%S"
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
+    format=_LOG_FORMAT,
+    datefmt=_LOG_DATE_FMT,
 )
+
+# Also persist logs to a rotating file so they survive restarts
+try:
+    if sys.platform == "darwin":
+        _log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs", "PostureCorrector")
+    else:
+        _log_dir = os.path.join(os.path.expanduser("~"), ".posture_corrector_logs")
+    os.makedirs(_log_dir, exist_ok=True)
+    _file_handler = logging.handlers.RotatingFileHandler(
+        os.path.join(_log_dir, "app.log"),
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    _file_handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATE_FMT))
+    logging.getLogger().addHandler(_file_handler)
+except OSError as _e:
+    logging.getLogger(__name__).warning("Could not set up log file: %s", _e)
+
 logger = logging.getLogger(__name__)
 
 

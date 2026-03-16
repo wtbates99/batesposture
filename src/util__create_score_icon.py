@@ -4,9 +4,12 @@ from PyQt6.QtGui import QIcon, QPixmap, QImage
 
 
 def create_score_icon(score: float) -> QIcon:
-    """Create a colour-coded circular tray icon with the posture score.
+    """Create a 64×64 colour-coded circular tray icon displaying the posture score.
 
-    Uses vectorised NumPy operations instead of nested pixel loops.
+    Colour mapping: HSV hue 0 (red, score=0) → 60 (green, score=100).
+    Renders a hard-edge circle with a soft outer glow ring, a layered drop-shadow,
+    and white score text centred inside. Uses vectorised NumPy coordinate grids
+    and OpenCV putText rather than nested pixel loops for performance.
     """
     size = 64
     img = np.zeros((size, size, 4), dtype=np.uint8)

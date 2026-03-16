@@ -57,7 +57,13 @@ def _format_duration(seconds: float) -> str:
 
 
 class SparklineWidget(QWidget):
-    """Score history area chart with per-segment colour coding."""
+    """Score history area chart with per-segment colour coding.
+
+    Displays up to 120 recent posture scores as a filled area chart. Each line
+    segment is coloured by interpolating red (0) → amber (50) → green (100) based
+    on the average of its two endpoints. Pre-populated from persisted database
+    history when the dashboard reopens, so the chart isn't blank after a restart.
+    """
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -145,6 +151,7 @@ class PostureDashboard(QDialog):
         self,
         baseline_score: float,
         preferred_theme: str,
+        history: Optional[List[float]] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -153,6 +160,8 @@ class PostureDashboard(QDialog):
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.recent_scores: deque[float] = deque(maxlen=120)
+        if history:
+            self.recent_scores.extend(history)
         self.baseline_score = baseline_score
 
         outer_layout = QVBoxLayout(self)
@@ -196,15 +205,15 @@ class PostureDashboard(QDialog):
             stats_layout.addWidget(stat)
 
         # Coaching / alert text
-        self.coaching_label = QLabel(
+        self.feedback_label = QLabel(
             self.tr("Settle into a neutral posture while we gather readings.")
         )
-        self.coaching_label.setWordWrap(True)
+        self.feedback_label.setWordWrap(True)
 
         card_layout.addWidget(self.video_label)
         card_layout.addWidget(self.sparkline)
         card_layout.addWidget(stats_row)
-        card_layout.addWidget(self.coaching_label)
+        card_layout.addWidget(self.feedback_label)
 
         outer_layout.addWidget(self.card)
         self._apply_theme(preferred_theme)
@@ -247,7 +256,7 @@ class PostureDashboard(QDialog):
             f"}}"
             f"QLabel {{ color: {foreground.name()}; }}"
         )
-        self.coaching_label.setStyleSheet(
+        self.feedback_label.setStyleSheet(
             f"color: {foreground.name()}; font-weight: 600; font-size: 13px;"
         )
         stat_style = (
@@ -260,6 +269,10 @@ class PostureDashboard(QDialog):
         ):
             stat.setStyleSheet(stat_style)
         self.sparkline.set_colors(accent, fill, background)
+
+    def get_history(self) -> List[float]:
+        """Return current sparkline scores for persistence."""
+        return list(self.recent_scores)
 
     def update_frame(self, frame) -> None:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -284,7 +297,7 @@ class PostureDashboard(QDialog):
     ) -> None:
         self.recent_scores.append(score)
         self.sparkline.update_values(list(self.recent_scores))
-        self._update_coaching_text(score, metrics)
+        self._update_feedback_text(score, metrics)
         self._update_stats(score, session_stats)
 
     def _update_stats(self, current: float, stats: Optional[dict]) -> None:
@@ -305,7 +318,7 @@ class PostureDashboard(QDialog):
             for stat in (self._stat_avg, self._stat_min, self._stat_max, self._stat_streak, self._stat_duration):
                 stat.set_value("—")
 
-    def _update_coaching_text(
+    def _update_feedback_text(
         self, score: float, metrics: Optional[Dict[str, float]]
     ) -> None:
         if score >= max(self.baseline_score - 5, 70):
@@ -322,4 +335,4 @@ class PostureDashboard(QDialog):
             if not cues:
                 cues.append(self.tr("Reset by rolling your shoulders back and opening your chest."))
             message = " ".join(cues[:2])
-        self.coaching_label.setText(message)
+        self.feedback_label.setText(message)

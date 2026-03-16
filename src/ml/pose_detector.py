@@ -9,7 +9,7 @@ import json
 import mediapipe as mp
 import numpy as np
 
-from services.settings_service import SettingsService
+from services.settings_service import POOR_POSTURE_THRESHOLD_DEFAULT, SettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,17 @@ class PoseDetectionResult:
 
 
 class PoseDetector:
+    """Detects human posture from webcam frames using MediaPipe Pose.
+
+    Preprocesses each frame with CLAHE contrast enhancement, runs MediaPipe landmark
+    detection, computes seven weighted posture metrics (head tilt, neck angle, shoulder
+    level, shoulder roll, spine alignment, head rotation, head side tilt), and returns a
+    0–100 posture score alongside annotated frame and detailed metric dict.
+
+    process_frame() is infallible — all exceptions are caught and (frame, 0.0, None)
+    is returned so the camera capture loop never stops due to a bad frame.
+    """
+
     def __init__(self, settings: SettingsService) -> None:
         self._settings = settings
         runtime = settings.runtime
@@ -34,10 +45,17 @@ class PoseDetector:
         self.frame_height = runtime.frame_height
         self.mp_pose = mp.solutions.pose
         self.mp_draw = mp.solutions.drawing_utils
+        model_complexity = ml_settings.model_complexity
+        if ml_settings.enable_gpu:
+            # Force highest-complexity model when GPU is requested; MediaPipe Python
+            # bindings don't expose an explicit GPU flag — complexity=2 is the model
+            # most likely to benefit from hardware acceleration.
+            model_complexity = 2
+            logger.info("GPU mode enabled: using model_complexity=2")
         self.pose = self.mp_pose.Pose(
             min_detection_confidence=ml_settings.min_detection_confidence,
             min_tracking_confidence=ml_settings.min_tracking_confidence,
-            model_complexity=ml_settings.model_complexity,
+            model_complexity=model_complexity,
         )
         self.posture_landmarks = settings.get_posture_landmarks()
         self.ideal_neck_vector = np.array([0, -1, 0])
@@ -58,8 +76,12 @@ class PoseDetector:
                 self._draw_posture_feedback(frame, posture_score)
                 return frame, posture_score, PoseDetectionResult(results, metrics)
             return frame, 0.0, None
-        except Exception:  # noqa: BLE001 - ensure downstream keeps running
-            logger.exception("Error processing frame")
+        except (cv2.error, ValueError, np.linalg.LinAlgError) as exc:
+            # Transient per-frame error (image conversion, bad landmark geometry) — skip frame
+            logger.warning("Skipping frame due to recoverable error: %s", exc)
+            return frame, 0.0, None
+        except Exception:  # noqa: BLE001 - unexpected error; keep loop alive
+            logger.exception("Unexpected error processing frame")
             return frame, 0.0, None
 
     def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
@@ -239,7 +261,7 @@ class PoseDetector:
             score_color,
             2,
         )
-        if score < 60:
+        if score < POOR_POSTURE_THRESHOLD_DEFAULT:
             cv2.putText(
                 frame,
                 "Please sit up straight!",

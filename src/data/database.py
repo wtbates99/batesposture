@@ -11,7 +11,22 @@ logger = logging.getLogger(__name__)
 
 
 class Database:
-    """SQLite persistence for posture scores and landmarks."""
+    """SQLite persistence for posture scores, landmarks, and dashboard history.
+
+    Maintains three tables:
+
+    - ``posture_scores`` (timestamp, score) — written on a configurable interval
+      during tracking sessions; queryable via get_recent_stats() and exportable to CSV.
+    - ``pose_landmarks`` (timestamp, landmark_name, x, y, z, visibility) — detailed
+      per-frame landmark positions aligned with posture_scores timestamps.
+    - ``dashboard_history`` (ts REAL PRIMARY KEY, score REAL) — lightweight score
+      series for the sparkline widget; persisted when the dashboard is closed and
+      reloaded when it reopens.
+
+    Uses WAL journal mode for faster concurrent writes from background threads.
+    Pending records are accumulated in memory and flushed in a single transaction
+    via _flush() to minimise write amplification.
+    """
 
     def __init__(self, db_path: str, landmark_names: Iterable[str]) -> None:
         self._conn = sqlite3.connect(db_path)
@@ -42,6 +57,11 @@ class Database:
             );
             CREATE INDEX IF NOT EXISTS idx_landmarks_timestamp
                 ON pose_landmarks (timestamp);
+
+            CREATE TABLE IF NOT EXISTS dashboard_history (
+                ts REAL PRIMARY KEY,
+                score REAL NOT NULL
+            );
             """
         )
         self._conn.commit()
@@ -125,6 +145,31 @@ class Database:
         except (sqlite3.Error, OSError):
             logger.exception("Failed to export scores CSV")
             return ""
+
+    def save_dashboard_history(self, scores: list[tuple[float, float]]) -> None:
+        """Persist (timestamp, score) pairs for the dashboard sparkline."""
+        if not scores:
+            return
+        try:
+            with self._conn:
+                self._conn.executemany(
+                    "INSERT OR REPLACE INTO dashboard_history (ts, score) VALUES (?, ?)",
+                    scores,
+                )
+        except sqlite3.Error:
+            logger.exception("Failed to save dashboard history")
+
+    def load_dashboard_history(self, limit: int = 120) -> list[tuple[float, float]]:
+        """Return the most recent *limit* (timestamp, score) pairs, oldest first."""
+        try:
+            rows = self._cursor.execute(
+                "SELECT ts, score FROM dashboard_history ORDER BY ts DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return list(reversed(rows))
+        except sqlite3.Error:
+            logger.exception("Failed to load dashboard history")
+            return []
 
     def close(self) -> None:
         self._flush()
