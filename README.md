@@ -29,7 +29,18 @@ A real-time posture monitoring application that uses computer vision to analyse 
 - Python `threading.Lock` — thread-safe score buffering between camera and UI threads
 - `logging.handlers.RotatingFileHandler` — 5 MB / 3-backup rotating log files
 
-## Installation
+## Download
+
+Pre-built binaries for every platform are available on the **[releases page](https://github.com/wtbates99/opencv2-posture-corrector/releases/latest)**, or via the **[download website](https://wtbates99.github.io/opencv2-posture-corrector/)** which auto-detects your OS.
+
+| Platform | File |
+|---|---|
+| macOS (Apple Silicon) | `PostureCorrector-vX.X.X-macOS-arm64.dmg` |
+| macOS (Intel) | `PostureCorrector-vX.X.X-macOS-x86_64.dmg` |
+| Windows | `PostureCorrector-vX.X.X-Windows.zip` |
+| Linux | `PostureCorrector-vX.X.X-Linux.tar.gz` |
+
+## Development Setup
 
 This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
 
@@ -43,6 +54,36 @@ uv run python src/main.py
 # Run tests
 uv run --group dev python -m pytest
 ```
+
+## Building from Source
+
+To produce a standalone executable locally:
+
+```bash
+# macOS / Linux
+./scripts/build_local.sh
+
+# Windows
+scripts\build_local.bat
+```
+
+Or run PyInstaller directly:
+
+```bash
+uv run pyinstaller opencv2-posture-corrector.spec --noconfirm
+```
+
+Output is written to `dist/PostureCorrector/` (or `dist/PostureCorrector.app` on macOS).
+
+### Releasing a new version
+
+1. Bump the version in `pyproject.toml`
+2. Commit and push, then tag the commit:
+   ```bash
+   git tag v1.2.0
+   git push origin v1.2.0
+   ```
+3. GitHub Actions builds all three platforms automatically and publishes a GitHub Release with the artifacts attached.
 
 ### macOS
 

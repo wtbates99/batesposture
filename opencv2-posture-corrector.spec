@@ -1,168 +1,131 @@
 # -*- mode: python ; coding: utf-8 -*-
+"""PyInstaller spec for Posture Corrector — macOS · Windows · Linux.
+
+Build commands (run from repo root):
+    uv run pyinstaller opencv2-posture-corrector.spec --noconfirm
+"""
+from __future__ import annotations
 
 import os
 import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-# Get the current directory
-current_dir = os.getcwd()
+ROOT = os.path.abspath(SPECPATH)  # repo root (where this .spec lives)
+SRC = os.path.join(ROOT, "src")
 
-# Collect all data files and submodules
-mediapipe_data = collect_data_files('mediapipe')
-opencv_data = collect_data_files('cv2')
-numpy_data = collect_data_files('numpy')
-plyer_data = collect_data_files('plyer')
-matplotlib_data = collect_data_files('matplotlib')
-
-# Collect all submodules
-mediapipe_modules = collect_submodules('mediapipe')
-opencv_modules = collect_submodules('cv2')
-matplotlib_modules = collect_submodules('matplotlib')
-
-# Define the main script
-main_script = os.path.join(current_dir, 'src', 'main.py')
-
-# Define data files to include - Fix icon path handling
-data_files = [
-    # Static assets - Use relative path for better bundling
-    ('src/static/icon.png', 'src/static'),
-
-    # Include all collected data files
-    *mediapipe_data,
-    *opencv_data,
-    *numpy_data,
-    *plyer_data,
-    *matplotlib_data,
+# ── data files ────────────────────────────────────────────────────────────────
+# MediaPipe ships .tflite models and proto data that must be bundled.
+datas = [
+    (os.path.join(SRC, "static", "icon.png"), "src/static"),
+    *collect_data_files("mediapipe"),
+    *collect_data_files("cv2"),
+    *collect_data_files("numpy"),
+    *collect_data_files("plyer"),
 ]
 
-# Define hidden imports
+# ── hidden imports ────────────────────────────────────────────────────────────
+# PyInstaller's static analysis misses dynamically-loaded modules.
 hidden_imports = [
-    # Core application modules
-    'src.tray_interface',
-    'src.pose_detector',
-    'src.webcam',
-    'src.database',
-    'src.notifications',
-    'src.settings_interface',
-    'src.util__settings',
-    'src.util__scores',
-    'src.util__send_notification',
-    'src.util__create_score_icon',
-
-    # PyQt6 modules
-    'PyQt6.QtCore',
-    'PyQt6.QtGui',
-    'PyQt6.QtWidgets',
-    'PyQt6.sip',
-
-    # MediaPipe modules
-    *mediapipe_modules,
-
-    # OpenCV modules
-    *opencv_modules,
-
-    # Matplotlib modules (required by MediaPipe)
-    *matplotlib_modules,
-
-    # Other dependencies
-    'numpy',
-    'cv2',
-    'mediapipe',
-    'plyer',
-    'psutil',
-    'sqlite3',
-    'json',
-    'platform',
-    'threading',
-    'time',
-    'datetime',
-    'os',
-    'sys',
-    'signal',
+    # application modules (all resolved relative to src/ via pathex)
+    "application",
+    "data.database",
+    "ml.pose_detector",
+    "services.camera_service",
+    "services.notification_service",
+    "services.score_service",
+    "services.settings_service",
+    "services.task_scheduler",
+    "ui.dashboard",
+    "ui.onboarding",
+    "ui.settings_dialog",
+    "ui.tray",
+    "util__create_score_icon",
+    "util__send_notification",
+    # PyQt6 — platform plugins are auto-collected but these are sometimes missed
+    "PyQt6.QtCore",
+    "PyQt6.QtGui",
+    "PyQt6.QtWidgets",
+    "PyQt6.sip",
+    # MediaPipe internals (large but necessary — tflite, protobuf, calculators)
+    *collect_submodules("mediapipe"),
+    # plyer platform backends
+    "plyer.platforms",
+    "plyer.platforms.macosx",
+    "plyer.platforms.macosx.notification",
+    "plyer.platforms.win",
+    "plyer.platforms.win.notification",
+    "plyer.platforms.linux",
+    "plyer.platforms.linux.notification",
+    # stdlib modules sometimes missed in onefile mode
+    "psutil",
+    "sqlite3",
+    "logging.handlers",
 ]
 
-# Platform-specific settings
-if sys.platform == 'darwin':  # macOS
-    # macOS specific settings
-    target_arch = None
-    codesign_identity = None
-    entitlements_file = None
+# ── platform icon ─────────────────────────────────────────────────────────────
+# CI converts icon.png → .icns (macOS) / .ico (Windows) before running PyInstaller.
+# Fall back to .png if the platform-native format hasn't been generated yet.
+def _icon_path(stem: str, ext: str) -> str:
+    candidate = os.path.join(SRC, "static", f"{stem}.{ext}")
+    fallback = os.path.join(SRC, "static", f"{stem}.png")
+    return candidate if os.path.exists(candidate) else fallback
 
-    # Include macOS specific frameworks
-    frameworks = [
-        'CoreFoundation',
-        'CoreGraphics',
-        'CoreVideo',
-        'AVFoundation',
-        'CoreMedia',
-        'QuartzCore',
-        'AppKit',
-        'Foundation',
-        'Security',
-        'SystemConfiguration'
-    ]
+if sys.platform == "darwin":
+    _icon = _icon_path("icon", "icns")
+elif sys.platform == "win32":
+    _icon = _icon_path("icon", "ico")
+else:
+    _icon = _icon_path("icon", "png")
 
-elif sys.platform == 'win32':  # Windows
-    # Windows specific settings
-    target_arch = None
+# ── platform-specific EXE kwargs ──────────────────────────────────────────────
+_exe_kwargs: dict = {}
+if sys.platform == "darwin":
+    # Code-signing is handled post-build in CI; leave identity as None here.
+    _exe_kwargs["codesign_identity"] = None
+    _exe_kwargs["entitlements_file"] = None
 
-elif sys.platform.startswith('linux'):  # Linux
-    # Linux specific settings
-    target_arch = None
-
-# Analysis configuration
+# ── analysis ──────────────────────────────────────────────────────────────────
 a = Analysis(
-    [main_script],
-    pathex=[current_dir, os.path.join(current_dir, 'src')],
+    [os.path.join(SRC, "main.py")],
+    pathex=[ROOT, SRC],
     binaries=[],
-    datas=data_files,
+    datas=datas,
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    frameworks=frameworks if sys.platform == 'darwin' else [],
     excludes=[
-        'tkinter',
-        'IPython',
-        'jupyter',
-        'pandas',
-        'scipy',
-        'sklearn',
-        'tensorflow',
-        'torch',
-        'pytest',
-        'unittest',
+        # not used by this app
+        "tkinter", "_tkinter",
+        "matplotlib",
+        "IPython", "jupyter",
+        "pandas", "scipy", "sklearn",
+        "tensorflow", "torch",
+        "anthropic",
+        # test infrastructure never needed at runtime
+        "pytest", "unittest",
     ],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=None,
     noarchive=False,
 )
 
-# PyZ configuration
-pyz = PYZ(a.pure, a.zipped_data, cipher=None)
+pyz = PYZ(a.pure)
 
-# Executable configuration
 exe = EXE(
     pyz,
     a.scripts,
     [],
     exclude_binaries=True,
-    name='opencv2-posture-corrector',
+    name="PostureCorrector",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # Set to False for GUI application
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=target_arch,
-    codesign_identity=codesign_identity,
-    entitlements_file=entitlements_file,
-    icon='src/static/icon.png',  # Use relative path for icon
+    console=False,          # GUI app — no terminal window
+    argv_emulation=False,   # not needed for a system-tray app
+    icon=_icon,
+    **_exe_kwargs,
 )
 
-# Collection configuration
 coll = COLLECT(
     exe,
     a.binaries,
@@ -171,36 +134,31 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='opencv2-posture-corrector',
+    name="PostureCorrector",
 )
 
-# macOS specific app bundle
-if sys.platform == 'darwin':
+# ── macOS .app bundle ─────────────────────────────────────────────────────────
+if sys.platform == "darwin":
     app = BUNDLE(
         coll,
-        name='opencv2-posture-corrector.app',
-        icon='src/static/icon.png',  # Use relative path for icon
-        bundle_identifier='com.opencv2.posture.corrector',
+        name="PostureCorrector.app",
+        icon=_icon,
+        bundle_identifier="com.wtbates99.posturecorrector",
         info_plist={
-            'CFBundleName': 'OpenCV2 Posture Corrector',
-            'CFBundleDisplayName': 'OpenCV2 Posture Corrector',
-            'CFBundleIdentifier': 'com.opencv2.posture.corrector',
-            'CFBundleVersion': '0.1.0',
-            'CFBundleShortVersionString': '0.1.0',
-            'CFBundlePackageType': 'APPL',
-            'CFBundleSignature': '????',
-            'LSMinimumSystemVersion': '10.15.0',
-            'NSHighResolutionCapable': True,
-            'LSUIElement': True,  # Makes it a background app (no dock icon)
-            'NSAppTransportSecurity': {
-                'NSAllowsArbitraryLoads': True
-            },
-            # Camera permissions
-            'NSCameraUsageDescription': 'This app needs camera access to detect posture and provide corrections.',
-            'NSMicrophoneUsageDescription': 'This app may need microphone access for audio notifications.',
-            # Required for background operation
-            'NSBackgroundModes': ['background-processing'],
-            # App category
-            'LSApplicationCategoryType': 'public.app-category.utilities',
+            "CFBundleName": "Posture Corrector",
+            "CFBundleDisplayName": "Posture Corrector",
+            "CFBundleIdentifier": "com.wtbates99.posturecorrector",
+            "CFBundleVersion": "1.0.0",
+            "CFBundleShortVersionString": "1.0.0",
+            "CFBundlePackageType": "APPL",
+            "LSMinimumSystemVersion": "12.0",
+            "NSHighResolutionCapable": True,
+            # LSUIElement = True → background-only app; no Dock icon, no menu bar
+            "LSUIElement": True,
+            "LSApplicationCategoryType": "public.app-category.utilities",
+            "NSCameraUsageDescription": (
+                "Posture Corrector needs camera access to monitor your posture in real time. "
+                "No video is recorded or transmitted."
+            ),
         },
     )

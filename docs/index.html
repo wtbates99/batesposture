@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Posture Corrector — Real-time posture monitoring for your desktop</title>
+  <meta name="description"
+    content="Free, open-source posture monitor that uses your webcam and MediaPipe to score your posture in real time. Runs entirely on your machine. Available for macOS, Windows, and Linux." />
+  <link rel="icon" type="image/png" href="icon.png" />
+  <style>
+    /* ── reset / tokens ────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #ffffff;
+      --surface:  #f5f7fa;
+      --border:   #e2e6ec;
+      --text:     #1a1c23;
+      --muted:    #5e6272;
+      --accent:   #2e7dff;
+      --accent-h: #1a62d4;
+      --green:    #22c55e;
+      --amber:    #f59e0b;
+      --red:      #ef4444;
+      --radius:   12px;
+      --shadow:   0 2px 12px rgba(0,0,0,.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:      #0f1117;
+        --surface: #1a1d27;
+        --border:  #2a2d3a;
+        --text:    #e8eaf0;
+        --muted:   #8b8fa8;
+        --accent:  #4d9bff;
+        --accent-h:#3a88ef;
+        --shadow:  0 2px 12px rgba(0,0,0,.4);
+      }
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── layout helpers ────────────────────────────────────────────────── */
+    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── nav ───────────────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+    }
+    nav .inner {
+      max-width: 960px; margin: 0 auto; padding: 0 24px;
+      height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo { font-weight: 700; font-size: 1rem; text-decoration: none; color: var(--text); }
+    .nav-links { display: flex; gap: 24px; list-style: none; }
+    .nav-links a { text-decoration: none; color: var(--muted); font-size: .9rem; transition: color .15s; }
+    .nav-links a:hover { color: var(--text); }
+
+    /* ── hero ──────────────────────────────────────────────────────────── */
+    .hero {
+      padding: 96px 24px 72px;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: var(--accent);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      border-radius: 999px;
+      padding: 4px 14px;
+      font-size: .8rem;
+      font-weight: 600;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.25rem);
+      font-weight: 800;
+      letter-spacing: -.02em;
+      line-height: 1.15;
+      margin-bottom: 20px;
+    }
+    .hero p {
+      font-size: 1.125rem;
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 36px;
+    }
+
+    /* ── download buttons ──────────────────────────────────────────────── */
+    .download-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: var(--radius);
+      font-size: .95rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform .12s, box-shadow .12s, background .12s;
+      border: none;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+    .btn:active { transform: translateY(0); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--accent-h); }
+
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-recommended {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+    }
+
+    .btn-icon { width: 20px; height: 20px; flex-shrink: 0; }
+
+    .download-note {
+      font-size: .8rem;
+      color: var(--muted);
+    }
+
+    .version-tag {
+      font-size: .8rem;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    .version-tag a { color: var(--accent); text-decoration: none; }
+    .version-tag a:hover { text-decoration: underline; }
+
+    /* ── score demo ─────────────────────────────────────────────────────── */
+    .score-demo {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin: 48px 0 0;
+      flex-wrap: wrap;
+    }
+    .score-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 8px 18px;
+      font-size: .9rem;
+      font-weight: 600;
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .dot-red    { background: var(--red); }
+    .dot-amber  { background: var(--amber); }
+    .dot-green  { background: var(--green); }
+
+    /* ── features ──────────────────────────────────────────────────────── */
+    section { padding: 72px 24px; }
+    section + section { border-top: 1px solid var(--border); }
+
+    .section-label {
+      font-size: .8rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    h2 {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 700;
+      letter-spacing: -.01em;
+      margin-bottom: 12px;
+    }
+    .section-sub { color: var(--muted); max-width: 560px; margin-bottom: 48px; }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .feature-card .icon {
+      font-size: 1.75rem;
+      margin-bottom: 12px;
+    }
+    .feature-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .feature-card p  { font-size: .875rem; color: var(--muted); line-height: 1.55; }
+
+    /* ── how it works ───────────────────────────────────────────────────── */
+    .steps { display: flex; flex-direction: column; gap: 24px; max-width: 640px; }
+    .step { display: flex; gap: 18px; align-items: flex-start; }
+    .step-num {
+      width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: .875rem;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .step-body h3 { font-size: .95rem; font-weight: 700; margin-bottom: 4px; }
+    .step-body p  { font-size: .875rem; color: var(--muted); }
+
+    /* ── platform requirements ──────────────────────────────────────────── */
+    .platform-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .platform-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+    }
+    .platform-card h3 { font-size: .95rem; font-weight: 700; margin-bottom: 8px; }
+    .platform-card ul { list-style: none; font-size: .85rem; color: var(--muted); }
+    .platform-card ul li { padding: 2px 0; }
+    .platform-card ul li::before { content: "✓ "; color: var(--green); font-weight: 700; }
+
+    /* ── install section ────────────────────────────────────────────────── */
+    .install-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab-btn {
+      padding: 7px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: .875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .12s, border-color .12s;
+    }
+    .tab-btn.active, .tab-btn:hover {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .install-steps { list-style: none; }
+    .install-steps li {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: .9rem;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .install-steps li:last-child { border-bottom: none; }
+    .step-n {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 50%;
+      width: 22px; height: 22px;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .75rem;
+      font-weight: 700;
+      margin-top: 1px;
+    }
+    code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 2px 6px;
+      font-size: .85em;
+      font-family: "SF Mono", "Fira Mono", "Cascadia Code", Consolas, monospace;
+    }
+
+    /* ── privacy ────────────────────────────────────────────────────────── */
+    .privacy-box {
+      background: color-mix(in srgb, var(--green) 8%, var(--surface));
+      border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      max-width: 640px;
+    }
+    .privacy-box .shield { font-size: 2rem; line-height: 1; flex-shrink: 0; }
+    .privacy-box h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .privacy-box p  { font-size: .875rem; color: var(--muted); }
+
+    /* ── footer ─────────────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 24px;
+      text-align: center;
+    }
+    footer p { font-size: .85rem; color: var(--muted); }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .hero { padding: 64px 16px 48px; }
+      .score-demo { gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── nav ──────────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="inner">
+    <a class="nav-logo" href="#">Posture Corrector</a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="#privacy">Privacy</a></li>
+      <li><a href="https://github.com/wtbates99/opencv2-posture-corrector" target="_blank" rel="noopener">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ── hero ─────────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-badge">Free &amp; Open Source</div>
+  <h1>Real-time posture<br>monitoring for your desktop</h1>
+  <p>
+    Posture Corrector uses your webcam and MediaPipe to score your posture
+    every second — entirely on your machine. No cloud, no subscriptions,
+    no tracking.
+  </p>
+
+  <div class="download-group" id="download-buttons">
+    <!-- populated by JS based on detected OS; static fallbacks below -->
+    <a class="btn btn-primary" id="primary-download" href="#install">
+      <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M10 2a1 1 0 011 1v9.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V3a1 1 0 011-1z"/>
+        <path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"/>
+      </svg>
+      <span id="primary-download-label">Download</span>
+    </a>
+    <a class="btn btn-secondary" href="https://github.com/wtbates99/opencv2-posture-corrector/releases/latest" target="_blank" rel="noopener">
+      All platforms &amp; versions
+    </a>
+  </div>
+
+  <div class="version-tag">
+    Latest release: <a id="latest-version" href="https://github.com/wtbates99/opencv2-posture-corrector/releases/latest" target="_blank" rel="noopener">checking…</a>
+  </div>
+
+  <div class="score-demo">
+    <div class="score-pill"><span class="dot dot-red"></span> Poor posture — alert sent</div>
+    <div class="score-pill"><span class="dot dot-amber"></span> Fair — minor corrections</div>
+    <div class="score-pill"><span class="dot dot-green"></span> Excellent — streak running</div>
+  </div>
+</section>
+
+<!-- ── features ─────────────────────────────────────────────────────────── -->
+<section id="features">
+  <div class="container">
+    <div class="section-label">Features</div>
+    <h2>Everything you need, nothing you don't</h2>
+    <p class="section-sub">A focused tool that stays out of your way until your posture needs attention.</p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="icon">📊</div>
+        <h3>Live 0–100 posture score</h3>
+        <p>Seven weighted metrics — head tilt, neck angle, shoulder balance, spine alignment, and more — combined into a single colour-coded score in your tray icon.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">📈</div>
+        <h3>Session dashboard</h3>
+        <p>Sparkline history, session average, min/max, best streak, and duration — all in a floating window that remembers your history between sessions.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🔔</div>
+        <h3>Smart notifications</h3>
+        <p>Native desktop alerts with configurable threshold and cooldown. Focus mode silences reminders when you need to concentrate.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">⏱️</div>
+        <h3>Interval scheduling</h3>
+        <p>Track continuously or on a schedule. A built-in break reminder prompts you to stand up after 50 minutes of sitting.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🗄️</div>
+        <h3>Local data logging</h3>
+        <p>Optional SQLite logging of every session with CSV export. All data lives on your machine — nothing is sent anywhere.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">⚡</div>
+        <h3>Adaptive performance</h3>
+        <p>Automatically reduces camera resolution on low-end hardware. GPU acceleration toggle for faster MediaPipe inference on supported devices.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── how it works ──────────────────────────────────────────────────────── -->
+<section id="how">
+  <div class="container">
+    <div class="section-label">How it works</div>
+    <h2>Simple by design</h2>
+    <p class="section-sub">No complicated setup. Just your webcam and 30 seconds to calibrate.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h3>Launch &amp; calibrate</h3>
+          <p>A short onboarding wizard captures a 6-second baseline of your natural posture so alerts are tuned to <em>you</em>, not a generic threshold.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h3>Start tracking</h3>
+          <p>Click "Start Tracking" from the tray icon. The icon turns green when posture is good and red when it degrades — no need to look at the app.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h3>Receive alerts</h3>
+          <p>When your score drops below the threshold, a native notification prompts you to sit up straight. A configurable cooldown prevents alert fatigue.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <h3>Review your session</h3>
+          <p>Open the dashboard at any time to see your live camera feed, score history, streaks, and session stats.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── install ───────────────────────────────────────────────────────────── -->
+<section id="install">
+  <div class="container">
+    <div class="section-label">Install</div>
+    <h2>Get started in minutes</h2>
+    <p class="section-sub">Download the build for your platform — no Python or dependencies required.</p>
+
+    <div class="install-tabs">
+      <button class="tab-btn active" onclick="showTab('mac')">macOS</button>
+      <button class="tab-btn" onclick="showTab('win')">Windows</button>
+      <button class="tab-btn" onclick="showTab('linux')">Linux</button>
+    </div>
+
+    <div id="tab-mac" class="tab-content active">
+      <ol class="install-steps">
+        <li><span class="step-n">1</span><span>Download the <strong>.dmg</strong> for your Mac — <strong>arm64</strong> for Apple Silicon (M1/M2/M3/M4), <strong>x86_64</strong> for Intel.</span></li>
+        <li><span class="step-n">2</span><span>Open the <code>.dmg</code> and drag <strong>Posture Corrector</strong> into your Applications folder.</span></li>
+        <li><span class="step-n">3</span><span>First launch: right-click the app → <strong>Open</strong>, then click Open in the dialog. This is a one-time step needed for unsigned apps on macOS.</span></li>
+        <li><span class="step-n">4</span><span>Grant <strong>camera permission</strong> when prompted (System Settings → Privacy &amp; Security → Camera if denied by mistake).</span></li>
+        <li><span class="step-n">5</span><span>The app lives in your menu bar — no Dock icon by design.</span></li>
+      </ol>
+    </div>
+
+    <div id="tab-win" class="tab-content">
+      <ol class="install-steps">
+        <li><span class="step-n">1</span><span>Download and extract <strong>PostureCorrector-Windows.zip</strong>.</span></li>
+        <li><span class="step-n">2</span><span>Open the extracted <code>PostureCorrector</code> folder and run <code>PostureCorrector.exe</code>.</span></li>
+        <li><span class="step-n">3</span><span>If Windows SmartScreen appears, click <strong>More info → Run anyway</strong>. This is expected for unsigned executables.</span></li>
+        <li><span class="step-n">4</span><span>Grant <strong>camera permission</strong> if Windows Privacy Settings prompts you.</span></li>
+        <li><span class="step-n">5</span><span>The app appears in your system tray (bottom-right, near the clock). You may need to expand hidden icons.</span></li>
+      </ol>
+    </div>
+
+    <div id="tab-linux" class="tab-content">
+      <ol class="install-steps">
+        <li><span class="step-n">1</span><span>Download <strong>PostureCorrector-Linux.tar.gz</strong> and extract it: <code>tar -xzf PostureCorrector-Linux.tar.gz</code></span></li>
+        <li><span class="step-n">2</span><span>Make the binary executable: <code>chmod +x PostureCorrector/PostureCorrector</code></span></li>
+        <li><span class="step-n">3</span><span>Run it: <code>./PostureCorrector/PostureCorrector</code></span></li>
+        <li><span class="step-n">4</span><span>Ensure your desktop environment supports system-tray icons. GNOME users may need the <strong>AppIndicator</strong> extension.</span></li>
+        <li><span class="step-n">5</span><span>Optional: create a <code>.desktop</code> launcher or add to startup applications for automatic launch at login.</span></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ── platform requirements ─────────────────────────────────────────────── -->
+<section id="requirements">
+  <div class="container">
+    <div class="section-label">Requirements</div>
+    <h2>What you need</h2>
+    <p class="section-sub">A webcam and a reasonably modern machine — that's it.</p>
+
+    <div class="platform-grid">
+      <div class="platform-card">
+        <h3>🍎 macOS</h3>
+        <ul>
+          <li>macOS 12 Monterey or later</li>
+          <li>Apple Silicon or Intel</li>
+          <li>Built-in or USB webcam</li>
+          <li>Camera permission granted</li>
+        </ul>
+      </div>
+      <div class="platform-card">
+        <h3>🪟 Windows</h3>
+        <ul>
+          <li>Windows 10 or 11 (64-bit)</li>
+          <li>Built-in or USB webcam</li>
+          <li>Camera permission granted</li>
+          <li>Visual C++ Redistributable</li>
+        </ul>
+      </div>
+      <div class="platform-card">
+        <h3>🐧 Linux</h3>
+        <ul>
+          <li>Ubuntu 22.04+ or equivalent</li>
+          <li>X11 or Wayland desktop</li>
+          <li>Webcam accessible at /dev/video0</li>
+          <li>libxcb and libGL installed</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── privacy ───────────────────────────────────────────────────────────── -->
+<section id="privacy">
+  <div class="container">
+    <div class="section-label">Privacy</div>
+    <h2>Runs entirely on your machine</h2>
+    <p class="section-sub">Your camera feed never leaves your computer.</p>
+
+    <div class="privacy-box">
+      <div class="shield">🛡️</div>
+      <div>
+        <h3>Zero data transmission</h3>
+        <p>
+          All pose detection runs locally using MediaPipe. No video frames, no pose data,
+          and no personal information is ever sent to a server. Session data is stored in a
+          local SQLite database on your machine — and only when you explicitly enable logging.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── footer ────────────────────────────────────────────────────────────── -->
+<footer>
+  <p>
+    Posture Corrector is free and open source —
+    <a href="https://github.com/wtbates99/opencv2-posture-corrector" target="_blank" rel="noopener">view the source on GitHub</a>.
+    &nbsp;·&nbsp;
+    <a href="https://github.com/wtbates99/opencv2-posture-corrector/issues" target="_blank" rel="noopener">Report an issue</a>
+  </p>
+</footer>
+
+<!-- ── JS: OS detection + GitHub API for latest release ─────────────────── -->
+<script>
+  const REPO = "wtbates99/opencv2-posture-corrector";
+  const RELEASES_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+  const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
+
+  function detectOS() {
+    const ua = navigator.userAgent;
+    if (/Mac/.test(ua))     return "mac";
+    if (/Win/.test(ua))     return "win";
+    if (/Linux/.test(ua))   return "linux";
+    return "other";
+  }
+
+  function getArch() {
+    // Best-effort detection; navigator.platform is deprecated but still works
+    const p = navigator.platform || "";
+    if (/arm|aarch/i.test(p)) return "arm64";
+    return "x86_64";
+  }
+
+  function assetUrl(assets, pattern) {
+    const re = new RegExp(pattern, "i");
+    const asset = assets.find(a => re.test(a.name));
+    return asset ? asset.browser_download_url : RELEASES_PAGE;
+  }
+
+  async function initDownloads() {
+    let assets = [];
+    let version = "";
+
+    try {
+      const res = await fetch(RELEASES_API);
+      if (res.ok) {
+        const data = await res.json();
+        version = data.tag_name || "";
+        assets  = data.assets || [];
+      }
+    } catch (_) { /* offline / rate-limited — fall through */ }
+
+    const versionEl = document.getElementById("latest-version");
+    if (version) {
+      versionEl.textContent = version;
+      versionEl.href = `https://github.com/${REPO}/releases/tag/${version}`;
+    } else {
+      versionEl.textContent = "latest";
+    }
+
+    const os   = detectOS();
+    const arch = getArch();
+    const btn  = document.getElementById("primary-download");
+    const lbl  = document.getElementById("primary-download-label");
+
+    if (os === "mac") {
+      const suffix = arch === "arm64" ? "arm64" : "x86_64";
+      btn.href = assetUrl(assets, `macOS-${suffix}\\.dmg`);
+      lbl.textContent = `Download for macOS (${suffix})`;
+      btn.className = "btn btn-recommended";
+      showTab("mac");
+    } else if (os === "win") {
+      btn.href = assetUrl(assets, "Windows\\.zip");
+      lbl.textContent = "Download for Windows";
+      btn.className = "btn btn-recommended";
+      showTab("win");
+    } else if (os === "linux") {
+      btn.href = assetUrl(assets, "Linux\\.tar\\.gz");
+      lbl.textContent = "Download for Linux";
+      btn.className = "btn btn-recommended";
+      showTab("linux");
+    } else {
+      btn.href = RELEASES_PAGE;
+      lbl.textContent = "View all downloads";
+    }
+  }
+
+  function showTab(id) {
+    document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
+    document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
+    const content = document.getElementById(`tab-${id}`);
+    if (content) content.classList.add("active");
+    // match button by onclick attribute
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      if (btn.getAttribute("onclick") === `showTab('${id}')`) btn.classList.add("active");
+    });
+  }
+
+  initDownloads();
+</script>
+</body>
+</html>
