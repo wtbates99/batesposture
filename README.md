@@ -1,4 +1,4 @@
-# OpenCV2 Posture Corrector
+# BatesPosture
 
 A real-time posture monitoring application that uses computer vision to analyse your posture through your webcam. Integrated into the system tray, it provides instant visual feedback, configurable alerts, and session analytics to help maintain proper ergonomics while working.
 
@@ -12,7 +12,7 @@ A real-time posture monitoring application that uses computer vision to analyse 
 - Desktop notifications with cooldown throttling and focus-mode suppression
 - Onboarding wizard with 6-second calibration to capture your personal baseline
 - SQLite database logging with CSV export
-- Rotating log files for persistent diagnostics (`~/Library/Logs/PostureCorrector/` on macOS)
+- Rotating log files for persistent diagnostics (`~/Library/Logs/BatesPosture/` on macOS)
 - Adaptive resolution — automatically drops to 640×480 on low-end hardware when enabled
 - GPU acceleration toggle (forces MediaPipe complexity-2 model)
 - Cross-platform: macOS, Windows, Linux
@@ -31,14 +31,14 @@ A real-time posture monitoring application that uses computer vision to analyse 
 
 ## Download
 
-Pre-built binaries for every platform are available on the **[releases page](https://github.com/wtbates99/opencv2-posture-corrector/releases/latest)**, or via the **[download website](https://wtbates99.github.io/opencv2-posture-corrector/)** which auto-detects your OS.
+Pre-built binaries for every platform are available on the **[releases page](https://github.com/wtbates99/batesposture/releases/latest)**, or via the **[download website](https://wtbates99.github.io/batesposture/)** which auto-detects your OS.
 
 | Platform | File |
 |---|---|
-| macOS (Apple Silicon) | `PostureCorrector-vX.X.X-macOS-arm64.dmg` |
-| macOS (Intel) | `PostureCorrector-vX.X.X-macOS-x86_64.dmg` |
-| Windows | `PostureCorrector-vX.X.X-Windows.zip` |
-| Linux | `PostureCorrector-vX.X.X-Linux.tar.gz` |
+| macOS (Apple Silicon) | `BatesPosture-vX.X.X-macOS-arm64.dmg` |
+| macOS (Intel) | `BatesPosture-vX.X.X-macOS-x86_64.dmg` |
+| Windows | `BatesPosture-vX.X.X-Windows.zip` |
+| Linux | `BatesPosture-vX.X.X-Linux.tar.gz` |
 
 ## Development Setup
 
@@ -70,10 +70,10 @@ scripts\build_local.bat
 Or run PyInstaller directly:
 
 ```bash
-uv run pyinstaller opencv2-posture-corrector.spec --noconfirm
+uv run pyinstaller batesposture.spec --noconfirm
 ```
 
-Output is written to `dist/PostureCorrector/` (or `dist/PostureCorrector.app` on macOS).
+Output is written to `dist/BatesPosture/` (or `dist/BatesPosture.app` on macOS).
 
 ### Releasing a new version
 
@@ -179,8 +179,8 @@ All video processing runs locally. Pose landmarks and scores are only written to
 - The `enable_gpu` toggle forces MediaPipe complexity-2 and relies on the device's ONNX Runtime or Metal/CUDA support. If unavailable, it falls back to CPU silently.
 
 **Log files**
-- macOS: `~/Library/Logs/PostureCorrector/app.log` (rotates at 5 MB, keeps 3 backups)
-- Other platforms: `~/.posture_corrector_logs/app.log`
+- macOS: `~/Library/Logs/BatesPosture/app.log` (rotates at 5 MB, keeps 3 backups)
+- Other platforms: `~/.batesposture_logs/app.log`
 
 ## Contributing
 

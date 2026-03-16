@@ -27,7 +27,7 @@ from PyQt6.QtCore import QSettings
 
 
 SETTINGS_SCHEMA_VERSION = "1.1.0"
-SETTINGS_ORGANIZATION = "PostureCorrector"
+SETTINGS_ORGANIZATION = "BatesPosture"
 SETTINGS_APPLICATION = "PostureApp"
 ENV_PREFIX = "POSTURE"
 

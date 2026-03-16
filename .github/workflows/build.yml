@@ -25,19 +25,19 @@ jobs:
         include:
           - os: macos-14          # Apple Silicon (arm64)
             platform: macOS-arm64
-            artifact_name: PostureCorrector-macOS-arm64.dmg
+            artifact_name: BatesPosture-macOS-arm64.dmg
 
           - os: macos-13          # Intel (x86_64)
             platform: macOS-x86_64
-            artifact_name: PostureCorrector-macOS-x86_64.dmg
+            artifact_name: BatesPosture-macOS-x86_64.dmg
 
           - os: windows-latest
             platform: Windows
-            artifact_name: PostureCorrector-Windows.zip
+            artifact_name: BatesPosture-Windows.zip
 
           - os: ubuntu-22.04
             platform: Linux
-            artifact_name: PostureCorrector-Linux.tar.gz
+            artifact_name: BatesPosture-Linux.tar.gz
 
     steps:
       # ── checkout ────────────────────────────────────────────────────────────
@@ -100,11 +100,11 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run pyinstaller opencv2-posture-corrector.spec --noconfirm
+        run: uv run pyinstaller batesposture.spec --noconfirm
 
       - name: Build with PyInstaller (macOS / Windows)
         if: runner.os != 'Linux'
-        run: uv run pyinstaller opencv2-posture-corrector.spec --noconfirm
+        run: uv run pyinstaller batesposture.spec --noconfirm
 
       # ── Resolve version tag ──────────────────────────────────────────────────
       - name: Resolve version
@@ -122,10 +122,10 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           VERSION="${{ steps.version.outputs.tag }}"
-          DMG_NAME="PostureCorrector-${VERSION}-${{ matrix.platform }}.dmg"
+          DMG_NAME="BatesPosture-${VERSION}-${{ matrix.platform }}.dmg"
           hdiutil create \
-            -volname "Posture Corrector" \
-            -srcfolder "dist/PostureCorrector.app" \
+            -volname "BatesPosture" \
+            -srcfolder "dist/BatesPosture.app" \
             -ov -format UDZO \
             "${DMG_NAME}"
           echo "artifact_path=${DMG_NAME}" >> "$GITHUB_ENV"
@@ -136,8 +136,8 @@ jobs:
         shell: pwsh
         run: |
           $VERSION = "${{ steps.version.outputs.tag }}"
-          $ZIP_NAME = "PostureCorrector-${VERSION}-Windows.zip"
-          Compress-Archive -Path "dist\PostureCorrector\*" -DestinationPath $ZIP_NAME
+          $ZIP_NAME = "BatesPosture-${VERSION}-Windows.zip"
+          Compress-Archive -Path "dist\BatesPosture\*" -DestinationPath $ZIP_NAME
           echo "artifact_path=$ZIP_NAME" >> $env:GITHUB_ENV
           echo "artifact_file=$ZIP_NAME" >> $env:GITHUB_ENV
 
@@ -145,8 +145,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           VERSION="${{ steps.version.outputs.tag }}"
-          TARBALL="PostureCorrector-${VERSION}-Linux.tar.gz"
-          tar -czf "${TARBALL}" -C dist PostureCorrector
+          TARBALL="BatesPosture-${VERSION}-Linux.tar.gz"
+          tar -czf "${TARBALL}" -C dist BatesPosture
           echo "artifact_path=${TARBALL}" >> "$GITHUB_ENV"
           echo "artifact_file=${TARBALL}" >> "$GITHUB_ENV"
 
@@ -189,7 +189,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: "Posture Corrector ${{ steps.version.outputs.tag }}"
+          name: "BatesPosture ${{ steps.version.outputs.tag }}"
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -199,19 +199,19 @@ jobs:
 
             | Platform | File |
             |---|---|
-            | macOS (Apple Silicon) | `PostureCorrector-${{ steps.version.outputs.tag }}-macOS-arm64.dmg` |
-            | macOS (Intel) | `PostureCorrector-${{ steps.version.outputs.tag }}-macOS-x86_64.dmg` |
-            | Windows | `PostureCorrector-${{ steps.version.outputs.tag }}-Windows.zip` |
-            | Linux | `PostureCorrector-${{ steps.version.outputs.tag }}-Linux.tar.gz` |
+            | macOS (Apple Silicon) | `BatesPosture-${{ steps.version.outputs.tag }}-macOS-arm64.dmg` |
+            | macOS (Intel) | `BatesPosture-${{ steps.version.outputs.tag }}-macOS-x86_64.dmg` |
+            | Windows | `BatesPosture-${{ steps.version.outputs.tag }}-Windows.zip` |
+            | Linux | `BatesPosture-${{ steps.version.outputs.tag }}-Linux.tar.gz` |
 
             ### Install
 
-            **macOS** — Open the `.dmg` and drag **Posture Corrector** to Applications.
+            **macOS** — Open the `.dmg` and drag **BatesPosture** to Applications.
             First launch: right-click → Open (bypasses Gatekeeper on unsigned builds).
 
-            **Windows** — Extract the zip and run `PostureCorrector.exe`.
+            **Windows** — Extract the zip and run `BatesPosture.exe`.
 
-            **Linux** — Extract the tar.gz and run `./PostureCorrector/PostureCorrector`.
+            **Linux** — Extract the tar.gz and run `./BatesPosture/BatesPosture`.
             Ensure your desktop environment supports system-tray icons (most do).
 
             ### Requirements

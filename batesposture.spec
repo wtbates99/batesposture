@@ -1,8 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for Posture Corrector — macOS · Windows · Linux.
+"""PyInstaller spec for BatesPosture — macOS · Windows · Linux.
 
 Build commands (run from repo root):
-    uv run pyinstaller opencv2-posture-corrector.spec --noconfirm
+    uv run pyinstaller batesposture.spec --noconfirm
 """
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="PostureCorrector",
+    name="BatesPosture",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -134,20 +134,20 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="PostureCorrector",
+    name="BatesPosture",
 )
 
 # ── macOS .app bundle ─────────────────────────────────────────────────────────
 if sys.platform == "darwin":
     app = BUNDLE(
         coll,
-        name="PostureCorrector.app",
+        name="BatesPosture.app",
         icon=_icon,
-        bundle_identifier="com.wtbates99.posturecorrector",
+        bundle_identifier="com.wtbates99.batesposture",
         info_plist={
-            "CFBundleName": "Posture Corrector",
-            "CFBundleDisplayName": "Posture Corrector",
-            "CFBundleIdentifier": "com.wtbates99.posturecorrector",
+            "CFBundleName": "BatesPosture",
+            "CFBundleDisplayName": "BatesPosture",
+            "CFBundleIdentifier": "com.wtbates99.batesposture",
             "CFBundleVersion": "1.0.0",
             "CFBundleShortVersionString": "1.0.0",
             "CFBundlePackageType": "APPL",
@@ -157,7 +157,7 @@ if sys.platform == "darwin":
             "LSUIElement": True,
             "LSApplicationCategoryType": "public.app-category.utilities",
             "NSCameraUsageDescription": (
-                "Posture Corrector needs camera access to monitor your posture in real time. "
+                "BatesPosture needs camera access to monitor your posture in real time. "
                 "No video is recorded or transmitted."
             ),
         },

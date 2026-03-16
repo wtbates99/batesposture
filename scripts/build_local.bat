@@ -1,5 +1,5 @@
 @echo off
-REM Build a standalone Posture Corrector app on Windows.
+REM Build a standalone BatesPosture app on Windows.
 REM Usage: scripts\build_local.bat
 
 setlocal EnableDelayedExpansion
@@ -15,11 +15,11 @@ uv run python -c ^
 if errorlevel 1 ( echo [WARNING] Icon conversion failed - using .png fallback )
 
 echo =^> Running PyInstaller...
-uv run pyinstaller opencv2-posture-corrector.spec --noconfirm
+uv run pyinstaller batesposture.spec --noconfirm
 if errorlevel 1 ( echo [ERROR] PyInstaller failed & exit /b 1 )
 
 echo.
-echo [OK] Build complete: dist\PostureCorrector\
+echo [OK] Build complete: dist\BatesPosture\
 echo.
 echo    To create a ZIP:
-echo    powershell Compress-Archive -Path dist\PostureCorrector\* -DestinationPath PostureCorrector-Windows.zip
+echo    powershell Compress-Archive -Path dist\BatesPosture\* -DestinationPath BatesPosture-Windows.zip

@@ -20,9 +20,9 @@ logging.basicConfig(
 # Also persist logs to a rotating file so they survive restarts
 try:
     if sys.platform == "darwin":
-        _log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs", "PostureCorrector")
+        _log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs", "BatesPosture")
     else:
-        _log_dir = os.path.join(os.path.expanduser("~"), ".posture_corrector_logs")
+        _log_dir = os.path.join(os.path.expanduser("~"), ".batesposture_logs")
     os.makedirs(_log_dir, exist_ok=True)
     _file_handler = logging.handlers.RotatingFileHandler(
         os.path.join(_log_dir, "app.log"),

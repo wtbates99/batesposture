@@ -1,5 +1,5 @@
 [project]
-name = "opencv2-posture-corrector"
+name = "batesposture"
 version = "0.1.0"
 description = "Discreet system-tray posture monitor powered by MediaPipe and OpenCV."
 readme = "README.md"

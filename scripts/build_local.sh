@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a standalone Posture Corrector app on macOS or Linux.
+# Build a standalone BatesPosture app on macOS or Linux.
 # Usage: ./scripts/build_local.sh
 set -euo pipefail
 
@@ -25,19 +25,19 @@ if [[ "$(uname)" == "Darwin" ]]; then
 fi
 
 echo "==> Running PyInstaller…"
-uv run pyinstaller opencv2-posture-corrector.spec --noconfirm
+uv run pyinstaller batesposture.spec --noconfirm
 
 echo ""
 if [[ "$(uname)" == "Darwin" ]]; then
-  echo "✅  Build complete: dist/PostureCorrector.app"
+  echo "✅  Build complete: dist/BatesPosture.app"
   echo ""
   echo "   To create a DMG:"
-  echo "   hdiutil create -volname 'Posture Corrector' \\"
-  echo "     -srcfolder dist/PostureCorrector.app \\"
-  echo "     -ov -format UDZO PostureCorrector.dmg"
+  echo "   hdiutil create -volname 'BatesPosture' \\"
+  echo "     -srcfolder dist/BatesPosture.app \\"
+  echo "     -ov -format UDZO BatesPosture.dmg"
 else
-  echo "✅  Build complete: dist/PostureCorrector/"
+  echo "✅  Build complete: dist/BatesPosture/"
   echo ""
   echo "   To create a tarball:"
-  echo "   tar -czf PostureCorrector-Linux.tar.gz -C dist PostureCorrector"
+  echo "   tar -czf BatesPosture-Linux.tar.gz -C dist BatesPosture"
 fi

@@ -83,13 +83,13 @@ class PostureTrackerTray(QSystemTrayIcon):
 
     def _initialize_application(self) -> None:
         app = QApplication.instance()
-        app.setApplicationName("Posture Corrector")
+        app.setApplicationName("BatesPosture")
         icon_path = self._settings.resources.icon_path
         self.icon_path = icon_path
         icon = QIcon(icon_path)
         app.setWindowIcon(icon)
         self.setIcon(icon)
-        self.setToolTip("Posture Corrector — idle")
+        self.setToolTip("BatesPosture — idle")
 
     def _run_onboarding_if_needed(self) -> None:
         if run_onboarding_if_needed(self._settings):
@@ -327,7 +327,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.video_window.close()
             self.video_window = None
         self.setIcon(QIcon(self.icon_path))
-        self.setToolTip("Posture Corrector — idle")
+        self.setToolTip("BatesPosture — idle")
         logger.info("Tracking stopped")
 
     def toggle_dashboard(self) -> None:

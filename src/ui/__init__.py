@@ -1,1 +1,1 @@
-"""User interface components for the posture corrector application."""
+"""User interface components for the batesposture application."""
