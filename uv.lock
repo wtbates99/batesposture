@@ -44,6 +44,47 @@ wheels = [
 ]
 
 [[package]]
+name = "batesposture"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "mediapipe" },
+    { name = "numpy" },
+    { name = "opencv-python" },
+    { name = "plyer" },
+    { name = "pre-commit" },
+    { name = "psutil" },
+    { name = "pyqt6" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pillow" },
+    { name = "pre-commit" },
+    { name = "pyinstaller" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mediapipe", specifier = ">=0.10.21" },
+    { name = "numpy", specifier = ">=1.26.4" },
+    { name = "opencv-python", specifier = ">=4.11.0.86" },
+    { name = "plyer", specifier = ">=2.1.0" },
+    { name = "pre-commit", specifier = ">=4.3.0" },
+    { name = "psutil", specifier = ">=7.0.0" },
+    { name = "pyqt6", specifier = ">=6.9.1" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pillow", specifier = ">=10.0.0" },
+    { name = "pre-commit", specifier = ">=4.3.0" },
+    { name = "pyinstaller", specifier = ">=6.0.0" },
+    { name = "pytest", specifier = ">=8.4.1" },
+]
+
+[[package]]
 name = "cffi"
 version = "1.17.1"
 source = { registry = "https://pypi.org/simple" }
@@ -894,47 +935,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6b02611523803495003bd87362db3e1d2a0454a6a63025dc6658a9830570aa0d", size = 62986597, upload-time = "2025-01-16T13:52:08.836Z" },
     { url = "https://files.pythonhosted.org/packages/fb/d7/1d5941a9dde095468b288d989ff6539dd69cd429dbf1b9e839013d21b6f0/opencv_python-4.11.0.86-cp37-abi3-win32.whl", hash = "sha256:810549cb2a4aedaa84ad9a1c92fbfdfc14090e2749cedf2c1589ad8359aa169b", size = 29384337, upload-time = "2025-01-16T13:52:13.549Z" },
     { url = "https://files.pythonhosted.org/packages/a4/7d/f1c30a92854540bf789e9cd5dde7ef49bbe63f855b85a2e6b3db8135c591/opencv_python-4.11.0.86-cp37-abi3-win_amd64.whl", hash = "sha256:085ad9b77c18853ea66283e98affefe2de8cc4c1f43eda4c100cf9b2721142ec", size = 39488044, upload-time = "2025-01-16T13:52:21.928Z" },
-]
-
-[[package]]
-name = "opencv2-posture-corrector"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "mediapipe" },
-    { name = "numpy" },
-    { name = "opencv-python" },
-    { name = "plyer" },
-    { name = "pre-commit" },
-    { name = "psutil" },
-    { name = "pyqt6" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pillow" },
-    { name = "pre-commit" },
-    { name = "pyinstaller" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "mediapipe", specifier = ">=0.10.21" },
-    { name = "numpy", specifier = ">=1.26.4" },
-    { name = "opencv-python", specifier = ">=4.11.0.86" },
-    { name = "plyer", specifier = ">=2.1.0" },
-    { name = "pre-commit", specifier = ">=4.3.0" },
-    { name = "psutil", specifier = ">=7.0.0" },
-    { name = "pyqt6", specifier = ">=6.9.1" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pillow", specifier = ">=10.0.0" },
-    { name = "pre-commit", specifier = ">=4.3.0" },
-    { name = "pyinstaller", specifier = ">=6.0.0" },
-    { name = "pytest", specifier = ">=8.4.1" },
 ]
 
 [[package]]
