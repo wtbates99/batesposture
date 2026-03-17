@@ -86,6 +86,15 @@ Output is written to `dist/BatesPosture/` (or `dist/BatesPosture.app` on macOS).
 
 ### macOS
 
+**First launch — Gatekeeper warning:** Because the app is not notarized with an Apple Developer certificate, macOS will warn you on first open. To bypass this:
+
+```bash
+# Option A: right-click the app → Open → Open (one-time only)
+
+# Option B: remove the quarantine attribute from Terminal
+xattr -cr /Applications/BatesPosture.app
+```
+
 Camera permissions are required. Grant access in **System Settings → Privacy & Security → Camera**.
 
 ### Linux
