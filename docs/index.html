@@ -482,7 +482,7 @@
 
     <div id="tab-mac" class="tab-content active">
       <ol class="install-steps">
-        <li><span class="step-n">1</span><span>Download the <strong>.dmg</strong> for your Mac — <strong>arm64</strong> for Apple Silicon (M1/M2/M3/M4), <strong>x86_64</strong> for Intel.</span></li>
+        <li><span class="step-n">1</span><span>Download the <strong>.dmg</strong> for your Mac (Apple Silicon — M1/M2/M3/M4).</span></li>
         <li><span class="step-n">2</span><span>Open the <code>.dmg</code> and drag <strong>BatesPosture</strong> into your Applications folder.</span></li>
         <li><span class="step-n">3</span><span>First launch: right-click the app → <strong>Open</strong>, then click Open in the dialog. This is a one-time step needed for unsigned apps on macOS.</span></li>
         <li><span class="step-n">4</span><span>Grant <strong>camera permission</strong> when prompted (System Settings → Privacy &amp; Security → Camera if denied by mistake).</span></li>
@@ -524,7 +524,7 @@
         <h3>🍎 macOS</h3>
         <ul>
           <li>macOS 12 Monterey or later</li>
-          <li>Apple Silicon or Intel</li>
+          <li>Apple Silicon (M1/M2/M3/M4)</li>
           <li>Built-in or USB webcam</li>
           <li>Camera permission granted</li>
         </ul>
@@ -597,10 +597,7 @@
   }
 
   function getArch() {
-    // Best-effort detection; navigator.platform is deprecated but still works
-    const p = navigator.platform || "";
-    if (/arm|aarch/i.test(p)) return "arm64";
-    return "x86_64";
+    return "arm64";
   }
 
   function assetUrl(assets, pattern) {
@@ -636,9 +633,8 @@
     const lbl  = document.getElementById("primary-download-label");
 
     if (os === "mac") {
-      const suffix = arch === "arm64" ? "arm64" : "x86_64";
-      btn.href = assetUrl(assets, `macOS-${suffix}\\.dmg`);
-      lbl.textContent = `Download for macOS (${suffix})`;
+      btn.href = assetUrl(assets, `macOS-arm64\\.dmg`);
+      lbl.textContent = "Download for macOS (Apple Silicon)";
       btn.className = "btn btn-recommended";
       showTab("mac");
     } else if (os === "win") {

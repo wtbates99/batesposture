@@ -23,13 +23,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14          # Apple Silicon (arm64)
+          - os: macos-latest      # Apple Silicon (arm64)
             platform: macOS-arm64
             artifact_name: BatesPosture-macOS-arm64.dmg
-
-          - os: macos-13          # Intel (x86_64)
-            platform: macOS-x86_64
-            artifact_name: BatesPosture-macOS-x86_64.dmg
 
           - os: windows-latest
             platform: Windows
@@ -200,7 +196,6 @@ jobs:
             | Platform | File |
             |---|---|
             | macOS (Apple Silicon) | `BatesPosture-${{ steps.version.outputs.tag }}-macOS-arm64.dmg` |
-            | macOS (Intel) | `BatesPosture-${{ steps.version.outputs.tag }}-macOS-x86_64.dmg` |
             | Windows | `BatesPosture-${{ steps.version.outputs.tag }}-Windows.zip` |
             | Linux | `BatesPosture-${{ steps.version.outputs.tag }}-Linux.tar.gz` |
 

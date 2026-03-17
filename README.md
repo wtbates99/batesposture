@@ -36,7 +36,6 @@ Pre-built binaries for every platform are available on the **[releases page](htt
 | Platform | File |
 |---|---|
 | macOS (Apple Silicon) | `BatesPosture-vX.X.X-macOS-arm64.dmg` |
-| macOS (Intel) | `BatesPosture-vX.X.X-macOS-x86_64.dmg` |
 | Windows | `BatesPosture-vX.X.X-Windows.zip` |
 | Linux | `BatesPosture-vX.X.X-Linux.tar.gz` |
 
