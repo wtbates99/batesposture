@@ -113,6 +113,13 @@ jobs:
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
+      # ── Ad-hoc sign (macOS) — removes "damaged app" Gatekeeper error ────────
+      - name: Ad-hoc sign app bundle (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          codesign --deep --force --sign - dist/BatesPosture.app
+          xattr -cr dist/BatesPosture.app
+
       # ── Package artifacts ────────────────────────────────────────────────────
       - name: Package → DMG (macOS)
         if: runner.os == 'macOS'
@@ -202,7 +209,8 @@ jobs:
             ### Install
 
             **macOS** — Open the `.dmg` and drag **BatesPosture** to Applications.
-            First launch: right-click → Open (bypasses Gatekeeper on unsigned builds).
+            First launch: right-click the app → **Open** → **Open** to bypass the Gatekeeper warning (one-time).
+            Or run `xattr -cr /Applications/BatesPosture.app` in Terminal.
 
             **Windows** — Extract the zip and run `BatesPosture.exe`.
 

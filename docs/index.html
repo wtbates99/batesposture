@@ -484,7 +484,7 @@
       <ol class="install-steps">
         <li><span class="step-n">1</span><span>Download the <strong>.dmg</strong> for your Mac (Apple Silicon — M1/M2/M3/M4).</span></li>
         <li><span class="step-n">2</span><span>Open the <code>.dmg</code> and drag <strong>BatesPosture</strong> into your Applications folder.</span></li>
-        <li><span class="step-n">3</span><span>First launch: right-click the app → <strong>Open</strong>, then click Open in the dialog. This is a one-time step needed for unsigned apps on macOS.</span></li>
+        <li><span class="step-n">3</span><span>First launch: right-click the app → <strong>Open</strong>, then click <strong>Open</strong> in the dialog. This one-time step bypasses the Gatekeeper warning for unsigned apps. Alternatively run <code>xattr -cr /Applications/BatesPosture.app</code> in Terminal.</span></li>
         <li><span class="step-n">4</span><span>Grant <strong>camera permission</strong> when prompted (System Settings → Privacy &amp; Security → Camera if denied by mistake).</span></li>
         <li><span class="step-n">5</span><span>The app lives in your menu bar — no Dock icon by design.</span></li>
       </ol>
