@@ -112,7 +112,11 @@ class CalibrationWorker(QObject):
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, settings: SettingsService, duration_seconds: int = CALIBRATION_DURATION_SECONDS) -> None:
+    def __init__(
+        self,
+        settings: SettingsService,
+        duration_seconds: int = CALIBRATION_DURATION_SECONDS,
+    ) -> None:
         super().__init__()
         self._settings = settings
         self._duration = duration_seconds
@@ -361,7 +365,9 @@ class CalibrationPage(QWizardPage):
             self._timeout = QTimer(self)
             self._timeout.setSingleShot(True)
             self._timeout.timeout.connect(self._handle_timeout)
-        self._timeout.start((worker.duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS) * 1000)
+        self._timeout.start(
+            (worker.duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS) * 1000
+        )
 
     def _handle_success(self, result: CalibrationResult) -> None:
         self._metrics = result

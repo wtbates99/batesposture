@@ -51,10 +51,23 @@ def create_score_icon(score: float) -> QIcon:
     temp = img.copy()
     for offset, alpha in zip([(2, 2), (1, 1)], [120, 180]):
         cv2.putText(
-            temp, text, (text_x + offset[0], text_y + offset[1]),
-            font, font_scale, (0, 0, 0, alpha), thickness,
+            temp,
+            text,
+            (text_x + offset[0], text_y + offset[1]),
+            font,
+            font_scale,
+            (0, 0, 0, alpha),
+            thickness,
         )
-    cv2.putText(temp, text, (text_x - 1, text_y - 1), font, font_scale, (255, 255, 255, 100), thickness)
+    cv2.putText(
+        temp,
+        text,
+        (text_x - 1, text_y - 1),
+        font,
+        font_scale,
+        (255, 255, 255, 100),
+        thickness,
+    )
     cv2.putText(temp, text, (text_x, text_y), font, font_scale, color, thickness)
 
     h, w, _ = temp.shape

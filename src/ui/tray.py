@@ -21,7 +21,11 @@ from ml.pose_detector import PoseDetectionResult, PoseDetector
 from services.camera_service import CameraService
 from services.notification_service import NotificationService
 from services.score_service import ScoreService
-from services.settings_service import BREAK_REMINDER_MINUTES, SettingsService, _default_tracking_intervals
+from services.settings_service import (
+    BREAK_REMINDER_MINUTES,
+    SettingsService,
+    _default_tracking_intervals,
+)
 from services.task_scheduler import TaskScheduler
 from ui.dashboard import PostureDashboard
 from ui.onboarding import run_onboarding_if_needed
@@ -228,7 +232,9 @@ class PostureTrackerTray(QSystemTrayIcon):
             try:
                 self._settings.save_all()
             except OSError as exc:
-                logger.warning("Could not persist normalised tracking intervals: %s", exc)
+                logger.warning(
+                    "Could not persist normalised tracking intervals: %s", exc
+                )
         return normalized
 
     def _coerce_interval_mapping(self, raw: object) -> Dict[str, int]:
@@ -292,6 +298,7 @@ class PostureTrackerTray(QSystemTrayIcon):
 
     def _setup_signal_handling(self) -> None:
         import signal
+
         signal.signal(signal.SIGINT, self._signal_handler)
 
     # ------------------------
@@ -355,10 +362,13 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _on_dashboard_closed(self) -> None:
         if self._database and isinstance(self.video_window, PostureDashboard):
             import time as _time
+
             scores = self.video_window.get_history()
             now = _time.time()
             step = 1.0
-            pairs = [(now - (len(scores) - i - 1) * step, s) for i, s in enumerate(scores)]
+            pairs = [
+                (now - (len(scores) - i - 1) * step, s) for i, s in enumerate(scores)
+            ]
             self._database.save_dashboard_history(pairs)
         self.video_window = None
         self.toggle_dashboard_action.setText("Show Dashboard")
