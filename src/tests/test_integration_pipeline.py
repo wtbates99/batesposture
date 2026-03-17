@@ -1,8 +1,7 @@
 """Integration tests for the camera → scoring → notification pipeline."""
 from __future__ import annotations
 
-import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -11,8 +10,6 @@ from ..data.database import Database
 from ..services.notification_service import NotificationService
 from ..services.score_service import ScoreService
 from ..services.settings_service import (
-    POOR_POSTURE_THRESHOLD_DEFAULT,
-    SCORE_THRESHOLD_DEFAULT,
     SettingsService,
 )
 
@@ -74,7 +71,9 @@ def test_score_service_returns_zero_when_empty(score_service):
 
 @patch("src.services.notification_service.send_notification")
 @patch("time.time", return_value=1000.0)
-def test_notification_fires_below_threshold(mock_time, mock_send, settings, notification_service):
+def test_notification_fires_below_threshold(
+    mock_time, mock_send, settings, notification_service
+):
     settings.update_runtime(poor_posture_threshold=70, notification_cooldown=300)
     notification_service.maybe_notify_posture(50.0)
     mock_send.assert_called_once()
@@ -82,7 +81,9 @@ def test_notification_fires_below_threshold(mock_time, mock_send, settings, noti
 
 @patch("src.services.notification_service.send_notification")
 @patch("time.time", return_value=1000.0)
-def test_notification_suppressed_above_threshold(mock_time, mock_send, settings, notification_service):
+def test_notification_suppressed_above_threshold(
+    mock_time, mock_send, settings, notification_service
+):
     settings.update_runtime(poor_posture_threshold=70)
     notification_service.maybe_notify_posture(85.0)
     mock_send.assert_not_called()
@@ -94,7 +95,9 @@ def test_notification_suppressed_above_threshold(mock_time, mock_send, settings,
 
 
 @patch("src.services.notification_service.send_notification")
-def test_notification_suppressed_during_cooldown(mock_send, settings, notification_service):
+def test_notification_suppressed_during_cooldown(
+    mock_send, settings, notification_service
+):
     """Two calls within the cooldown window should only produce one notification."""
     settings.update_runtime(poor_posture_threshold=70, notification_cooldown=300)
     with patch("time.time", return_value=1000.0):
@@ -106,7 +109,9 @@ def test_notification_suppressed_during_cooldown(mock_send, settings, notificati
 
 
 @patch("src.services.notification_service.send_notification")
-def test_notification_fires_after_cooldown_expires(mock_send, settings, notification_service):
+def test_notification_fires_after_cooldown_expires(
+    mock_send, settings, notification_service
+):
     settings.update_runtime(poor_posture_threshold=70, notification_cooldown=300)
     with patch("time.time", return_value=1000.0):
         notification_service.maybe_notify_posture(40.0)

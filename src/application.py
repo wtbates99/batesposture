@@ -23,7 +23,8 @@ def _is_low_end_hardware() -> bool:
     cpu_count = os.cpu_count() or 4
     try:
         import psutil
-        ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+
+        ram_gb = psutil.virtual_memory().total / (1024**3)
         return cpu_count <= 4 or ram_gb < 8
     except ImportError:
         return cpu_count <= 4
@@ -73,10 +74,16 @@ class ApplicationFacade:
         """Drop to 640×480 on low-end hardware when adaptive_resolution is enabled or the
         user has not overridden the default 1280×720 resolution."""
         runtime = self.settings.runtime
-        if runtime.adaptive_resolution and runtime.frame_width == 1280 and runtime.frame_height == 720:
+        if (
+            runtime.adaptive_resolution
+            and runtime.frame_width == 1280
+            and runtime.frame_height == 720
+        ):
             if _is_low_end_hardware():
                 self.settings.update_runtime(frame_width=640, frame_height=480)
-                logger.info("Adaptive resolution: switched to 640×480 on low-end hardware")
+                logger.info(
+                    "Adaptive resolution: switched to 640×480 on low-end hardware"
+                )
 
     def run(self) -> int:
         self.tray.show()

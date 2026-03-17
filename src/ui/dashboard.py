@@ -8,7 +8,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import (
     QColor,
     QImage,
-    QLinearGradient,
     QPainter,
     QPainterPath,
     QPen,
@@ -34,7 +33,11 @@ def _score_color(score: float) -> QColor:
         r, g, b = int(220 * (1 - t) + 240 * t), int(50 * (1 - t) + 160 * t), 40
     else:
         t = (s - 0.5) / 0.5
-        r, g, b = int(240 * (1 - t) + 52 * t), int(160 * (1 - t) + 199 * t), int(40 * (1 - t) + 89 * t)
+        r, g, b = (
+            int(240 * (1 - t) + 52 * t),
+            int(160 * (1 - t) + 199 * t),
+            int(40 * (1 - t) + 89 * t),
+        )
     return QColor(r, g, b)
 
 
@@ -90,7 +93,9 @@ class SparklineWidget(QWidget):
 
         if len(self.values) < 2:
             painter.setPen(QPen(QColor("#aaaaaa"), 1.5))
-            painter.drawLine(rect.left(), rect.center().y(), rect.right(), rect.center().y())
+            painter.drawLine(
+                rect.left(), rect.center().y(), rect.right(), rect.center().y()
+            )
             return
 
         min_val = min(self.values)
@@ -143,7 +148,9 @@ class _StatLabel(QLabel):
         self._update_text(value)
 
     def _update_text(self, value: str) -> None:
-        self.setText(f"<small style='opacity:0.6'>{self._title}</small><br><b>{value}</b>")
+        self.setText(
+            f"<small style='opacity:0.6'>{self._title}</small><br><b>{value}</b>"
+        )
 
 
 class PostureDashboard(QDialog):
@@ -264,8 +271,12 @@ class PostureDashboard(QDialog):
             f"border: 1px solid {stat_border}; border-radius: 8px; padding: 6px 8px;"
         )
         for stat in (
-            self._stat_current, self._stat_avg, self._stat_min,
-            self._stat_max, self._stat_streak, self._stat_duration,
+            self._stat_current,
+            self._stat_avg,
+            self._stat_min,
+            self._stat_max,
+            self._stat_streak,
+            self._stat_duration,
         ):
             stat.setStyleSheet(stat_style)
         self.sparkline.set_colors(accent, fill, background)
@@ -308,31 +319,51 @@ class PostureDashboard(QDialog):
         )
         if stats and stats.get("count", 0) > 0:
             self._stat_avg.set_value(f"{stats['avg']:.0f}")
-            self._stat_min.set_value(f"<span style='color:#e05050'>{stats['min']:.0f}</span>")
-            self._stat_max.set_value(f"<span style='color:#4caf50'>{stats['max']:.0f}</span>")
+            self._stat_min.set_value(
+                f"<span style='color:#e05050'>{stats['min']:.0f}</span>"
+            )
+            self._stat_max.set_value(
+                f"<span style='color:#4caf50'>{stats['max']:.0f}</span>"
+            )
             best = stats.get("best_streak_s", 0.0)
             streak_str = _format_duration(best) if best >= 5 else "—"
             self._stat_streak.set_value(streak_str)
-            self._stat_duration.set_value(_format_duration(stats.get("duration_s", 0.0)))
+            self._stat_duration.set_value(
+                _format_duration(stats.get("duration_s", 0.0))
+            )
         else:
-            for stat in (self._stat_avg, self._stat_min, self._stat_max, self._stat_streak, self._stat_duration):
+            for stat in (
+                self._stat_avg,
+                self._stat_min,
+                self._stat_max,
+                self._stat_streak,
+                self._stat_duration,
+            ):
                 stat.set_value("—")
 
     def _update_feedback_text(
         self, score: float, metrics: Optional[Dict[str, float]]
     ) -> None:
         if score >= max(self.baseline_score - 5, 70):
-            message = self.tr("Nice alignment! Keep a relaxed breath and soft shoulders.")
+            message = self.tr(
+                "Nice alignment! Keep a relaxed breath and soft shoulders."
+            )
         else:
             cues: List[str] = []
             if metrics:
                 if metrics.get("neck_angle", 0.0) > 15.0:
-                    cues.append(self.tr("Gently draw your head back over your shoulders."))
+                    cues.append(
+                        self.tr("Gently draw your head back over your shoulders.")
+                    )
                 if metrics.get("shoulder_vertical_delta", 0.0) > 0.05:
                     cues.append(self.tr("Level your shoulders to center your posture."))
                 if metrics.get("spine_angle", 0.0) > 10.0:
                     cues.append(self.tr("Lengthen through your spine and sit tall."))
             if not cues:
-                cues.append(self.tr("Reset by rolling your shoulders back and opening your chest."))
+                cues.append(
+                    self.tr(
+                        "Reset by rolling your shoulders back and opening your chest."
+                    )
+                )
             message = " ".join(cues[:2])
         self.feedback_label.setText(message)

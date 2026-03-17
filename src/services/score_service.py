@@ -119,8 +119,13 @@ class ScoreService:
         with self._lock:
             if not self._is_full and self._current_index == 0:
                 return {
-                    "count": 0, "avg": 0.0, "min": 0.0, "max": 0.0,
-                    "duration_s": 0.0, "best_streak_s": 0.0, "current_streak_s": 0.0,
+                    "count": 0,
+                    "avg": 0.0,
+                    "min": 0.0,
+                    "max": 0.0,
+                    "duration_s": 0.0,
+                    "best_streak_s": 0.0,
+                    "current_streak_s": 0.0,
                 }
 
             cutoff = self._session_start if self._session_start is not None else 0.0
@@ -136,8 +141,13 @@ class ScoreService:
 
             if len(scores) == 0:
                 return {
-                    "count": 0, "avg": 0.0, "min": 0.0, "max": 0.0,
-                    "duration_s": 0.0, "best_streak_s": 0.0, "current_streak_s": 0.0,
+                    "count": 0,
+                    "avg": 0.0,
+                    "min": 0.0,
+                    "max": 0.0,
+                    "duration_s": 0.0,
+                    "best_streak_s": 0.0,
+                    "current_streak_s": 0.0,
                 }
 
             duration = time() - self._session_start if self._session_start else 0.0
