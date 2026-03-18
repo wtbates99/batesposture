@@ -145,7 +145,8 @@ class TestPoseDetector:
                 self.pose_landmarks = landmarks
 
         results = MockResults(landmarks)
-        pd._draw_landmarks(mock_frame, results)
+        points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
+        pd._draw_landmarks(mock_frame, results, points)
         assert isinstance(mock_frame, np.ndarray)
 
     @pytest.mark.parametrize(

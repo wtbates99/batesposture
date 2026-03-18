@@ -27,7 +27,7 @@ from services.settings_service import (
     _default_tracking_intervals,
 )
 from services.task_scheduler import TaskScheduler
-from ui.dashboard import PostureDashboard
+from ui.dashboard import PostureDashboard, score_grade
 from ui.onboarding import run_onboarding_if_needed
 from ui.settings_dialog import SettingsDialog
 from util__create_score_icon import create_score_icon
@@ -77,6 +77,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.last_db_save: Optional[datetime] = None
         self._continuous_tracking_start: Optional[datetime] = None
         self._break_reminder_sent = False
+        self._last_icon_score: float = -1.0
 
         self._initialize_application()
         self._run_onboarding_if_needed()
@@ -327,6 +328,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._camera_service.stop()
         self.tracking_enabled = False
         self._continuous_tracking_start = None
+        self._last_icon_score = -1.0
         self.toggle_tracking_action.setText("Start Tracking")
         self.toggle_dashboard_action.setEnabled(False)
         self.toggle_dashboard_action.setText("Show Dashboard")
@@ -380,8 +382,10 @@ class PostureTrackerTray(QSystemTrayIcon):
         if frame is None:
             return
         self._scores.add_score(score)
-        average_score = self._scores.average()
-        self.setIcon(create_score_icon(average_score))
+        average_score, stats = self._scores.average_and_stats()
+        if abs(average_score - self._last_icon_score) >= 1.0:
+            self.setIcon(create_score_icon(average_score))
+            self._last_icon_score = average_score
 
         results_bundle = self._camera_service.get_latest_pose_results()
         metrics: Optional[Dict[str, float]] = None
@@ -397,12 +401,10 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         if isinstance(self.video_window, PostureDashboard):
             self.video_window.update_frame(frame)
-            self.video_window.update_score(
-                average_score, metrics, self._scores.session_stats()
-            )
+            self.video_window.update_score(average_score, metrics, stats)
 
     def _update_tooltip(self, average_score: float) -> None:
-        grade = self._score_grade(average_score)
+        grade = score_grade(average_score)
         streak_s = self._scores.current_streak_s
         parts = [f"Posture: {average_score:.0f}% ({grade})"]
         if streak_s >= 60:
@@ -600,12 +602,3 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _signal_handler(self, signum, frame):  # noqa: D401, N803
         self.quit_application()
 
-    @staticmethod
-    def _score_grade(score: float) -> str:
-        if score >= 85:
-            return "Excellent"
-        if score >= 70:
-            return "Good"
-        if score >= 55:
-            return "Fair"
-        return "Poor"

@@ -64,15 +64,28 @@ class PoseDetector:
         self.score_thresholds = self._normalize_thresholds(
             ml_settings.posture_thresholds
         )
+        # Cached CLAHE object — creating one per frame is expensive at 30 FPS
+        self._clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        # Pre-warm MediaPipe so the first real frame isn't delayed by model init
+        try:
+            _dummy = np.zeros((480, 640, 3), dtype=np.uint8)
+            self.pose.process(cv2.cvtColor(_dummy, cv2.COLOR_BGR2RGB))
+            logger.debug("MediaPipe model pre-warmed")
+        except Exception:  # noqa: BLE001
+            pass
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, Any]:
         try:
             frame = self._preprocess_frame(frame)
             results = self._detect_pose(frame)
             if results.pose_landmarks:
-                self._draw_landmarks(frame, results)
-                metrics = self._compute_posture_metrics(results.pose_landmarks)
+                # Extract landmark array once — shared by metrics and drawing
+                points = np.array(
+                    [[lm.x, lm.y, lm.z] for lm in results.pose_landmarks.landmark]
+                )
+                metrics = self._compute_posture_metrics_from_points(points)
                 posture_score = metrics["posture_score"]
+                self._draw_landmarks(frame, results, points)
                 self._draw_posture_feedback(frame, posture_score)
                 return frame, posture_score, PoseDetectionResult(results, metrics)
             return frame, 0.0, None
@@ -88,8 +101,7 @@ class PoseDetector:
         frame = cv2.resize(frame, (self.frame_width, self.frame_height))
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l_channel, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        l_channel = clahe.apply(l_channel)
+        l_channel = self._clahe.apply(l_channel)
         enhanced = cv2.merge([l_channel, a, b])
         return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
@@ -97,7 +109,9 @@ class PoseDetector:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         return self.pose.process(rgb_frame)
 
-    def _draw_landmarks(self, frame: np.ndarray, results: Any) -> None:
+    def _draw_landmarks(
+        self, frame: np.ndarray, results: Any, points: np.ndarray
+    ) -> None:
         self.mp_draw.draw_landmarks(
             frame,
             results.pose_landmarks,
@@ -111,37 +125,19 @@ class PoseDetector:
         )
         if results.pose_landmarks:
             h, w, _ = frame.shape
-            landmarks = results.pose_landmarks.landmark
-            mid_hip = np.mean(
-                [
-                    [
-                        landmarks[self.mp_pose.PoseLandmark.LEFT_HIP].x,
-                        landmarks[self.mp_pose.PoseLandmark.LEFT_HIP].y,
-                    ],
-                    [
-                        landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP].x,
-                        landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP].y,
-                    ],
-                ],
-                axis=0,
-            )
-            mid_shoulder = np.mean(
-                [
-                    [
-                        landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER].x,
-                        landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER].y,
-                    ],
-                    [
-                        landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER].x,
-                        landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER].y,
-                    ],
-                ],
-                axis=0,
-            )
+            lh = self.mp_pose.PoseLandmark.LEFT_HIP
+            rh = self.mp_pose.PoseLandmark.RIGHT_HIP
+            ls = self.mp_pose.PoseLandmark.LEFT_SHOULDER
+            rs = self.mp_pose.PoseLandmark.RIGHT_SHOULDER
+            # Reuse pre-extracted points array instead of re-reading landmarks
+            mid_hip_x = (points[lh, 0] + points[rh, 0]) * 0.5
+            mid_hip_y = (points[lh, 1] + points[rh, 1]) * 0.5
+            mid_shoulder_x = (points[ls, 0] + points[rs, 0]) * 0.5
+            mid_shoulder_y = (points[ls, 1] + points[rs, 1]) * 0.5
             cv2.line(
                 frame,
-                (int(mid_hip[0] * w), int(mid_hip[1] * h)),
-                (int(mid_shoulder[0] * w), int(mid_shoulder[1] * h)),
+                (int(mid_hip_x * w), int(mid_hip_y * h)),
+                (int(mid_shoulder_x * w), int(mid_shoulder_y * h)),
                 (0, 0, 255),
                 2,
             )
@@ -162,6 +158,9 @@ class PoseDetector:
 
     def _compute_posture_metrics(self, landmarks: Any) -> Dict[str, float]:
         points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
+        return self._compute_posture_metrics_from_points(points)
+
+    def _compute_posture_metrics_from_points(self, points: np.ndarray) -> Dict[str, float]:
         nose = points[self.mp_pose.PoseLandmark.NOSE]
         ears = points[
             [self.mp_pose.PoseLandmark.LEFT_EAR, self.mp_pose.PoseLandmark.RIGHT_EAR]
