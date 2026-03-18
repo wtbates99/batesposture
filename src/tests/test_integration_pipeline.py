@@ -70,19 +70,15 @@ def test_score_service_returns_zero_when_empty(score_service):
 
 
 @patch("src.services.notification_service.send_notification")
-@patch("time.time", return_value=1000.0)
-def test_notification_fires_below_threshold(
-    mock_time, mock_send, settings, notification_service
-):
+def test_notification_fires_below_threshold(mock_send, settings, notification_service):
     settings.update_runtime(poor_posture_threshold=70, notification_cooldown=300)
     notification_service.maybe_notify_posture(50.0)
     mock_send.assert_called_once()
 
 
 @patch("src.services.notification_service.send_notification")
-@patch("time.time", return_value=1000.0)
 def test_notification_suppressed_above_threshold(
-    mock_time, mock_send, settings, notification_service
+    mock_send, settings, notification_service
 ):
     settings.update_runtime(poor_posture_threshold=70)
     notification_service.maybe_notify_posture(85.0)
@@ -100,10 +96,10 @@ def test_notification_suppressed_during_cooldown(
 ):
     """Two calls within the cooldown window should only produce one notification."""
     settings.update_runtime(poor_posture_threshold=70, notification_cooldown=300)
-    with patch("time.time", return_value=1000.0):
+    with patch("src.services.notification_service.monotonic", return_value=1000.0):
         notification_service.maybe_notify_posture(40.0)
     # Still within cooldown window (only 1 second has passed)
-    with patch("time.time", return_value=1001.0):
+    with patch("src.services.notification_service.monotonic", return_value=1001.0):
         notification_service.maybe_notify_posture(40.0)
     assert mock_send.call_count == 1
 
@@ -113,10 +109,10 @@ def test_notification_fires_after_cooldown_expires(
     mock_send, settings, notification_service
 ):
     settings.update_runtime(poor_posture_threshold=70, notification_cooldown=300)
-    with patch("time.time", return_value=1000.0):
+    with patch("src.services.notification_service.monotonic", return_value=1000.0):
         notification_service.maybe_notify_posture(40.0)
     # Cooldown (300s) has elapsed
-    with patch("time.time", return_value=1301.0):
+    with patch("src.services.notification_service.monotonic", return_value=1301.0):
         notification_service.maybe_notify_posture(40.0)
     assert mock_send.call_count == 2
 

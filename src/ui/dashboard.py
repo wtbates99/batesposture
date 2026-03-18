@@ -41,7 +41,7 @@ def _score_color(score: float) -> QColor:
     return QColor(r, g, b)
 
 
-def _score_grade(score: float) -> str:
+def score_grade(score: float) -> str:
     if score >= 85:
         return "Excellent"
     if score >= 70:
@@ -82,7 +82,7 @@ class SparklineWidget(QWidget):
         self.update()
 
     def update_values(self, values: List[float]) -> None:
-        self.values = list(values)
+        self.values = values
         self.update()
 
     def paintEvent(self, event):  # noqa: N802
@@ -124,13 +124,14 @@ class SparklineWidget(QWidget):
         fill_path.closeSubpath()
         painter.fillPath(fill_path, self.fill_color)
 
-        # Colour-coded line segments
+        # Colour-coded line segments — reuse one QPen, only swap the colour
+        pen = QPen(QColor(), 2.0)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         for i in range(1, n):
             x1, y1 = _xy(i - 1, self.values[i - 1])
             x2, y2 = _xy(i, self.values[i])
             avg = (self.values[i - 1] + self.values[i]) / 2
-            pen = QPen(_score_color(avg), 2.0)
-            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setColor(_score_color(avg))
             painter.setPen(pen)
             painter.drawLine(int(x1), int(y1), int(x2), int(y2))
 
@@ -163,16 +164,13 @@ class PostureDashboard(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Posture Dashboard")
-        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.recent_scores: deque[float] = deque(maxlen=120)
         if history:
             self.recent_scores.extend(history)
         self.baseline_score = baseline_score
 
         outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setContentsMargins(12, 12, 12, 12)
         self.card = QFrame()
         self.card.setObjectName("dashboardCard")
         card_layout = QVBoxLayout(self.card)
@@ -255,10 +253,11 @@ class PostureDashboard(QDialog):
             stat_bg = "#f8f9fa"
             stat_border = "rgba(0,0,0,10)"
 
+        self.setStyleSheet(f"QDialog {{ background-color: {background.name()}; }}")
         self.card.setStyleSheet(
             f"QFrame#dashboardCard {{"
             f"  background-color: {background.name()};"
-            f"  border-radius: 18px;"
+            f"  border-radius: 12px;"
             f"  border: 1px solid rgba(0,0,0,25);"
             f"}}"
             f"QLabel {{ color: {foreground.name()}; }}"
@@ -312,7 +311,7 @@ class PostureDashboard(QDialog):
         self._update_stats(score, session_stats)
 
     def _update_stats(self, current: float, stats: Optional[dict]) -> None:
-        grade = _score_grade(current)
+        grade = score_grade(current)
         color = _score_color(current).name()
         self._stat_current.set_value(
             f"<span style='color:{color}'>{current:.0f}</span> <small>({grade})</small>"

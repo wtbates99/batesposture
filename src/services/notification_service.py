@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import time
+from time import monotonic
 
 from util__send_notification import send_notification
 
@@ -18,7 +18,7 @@ class NotificationService:
     def __init__(self, settings: SettingsService, icon_path: str) -> None:
         self._settings = settings
         self._icon_path = icon_path
-        self._last_notification_time = 0.0
+        self._last_notification_time: float = 0.0
 
     def notify_interval_change(self, message: str) -> None:
         runtime = self._settings.runtime
@@ -30,7 +30,7 @@ class NotificationService:
         if not runtime.notifications_enabled or runtime.focus_mode_enabled:
             return
         if posture_score < runtime.poor_posture_threshold:
-            current_time = time.time()
+            current_time = monotonic()
             if (
                 current_time - self._last_notification_time
                 > runtime.notification_cooldown

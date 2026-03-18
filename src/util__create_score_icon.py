@@ -2,38 +2,35 @@ import numpy as np
 import cv2
 from PyQt6.QtGui import QIcon, QPixmap, QImage
 
+# Pre-compute constant geometry at import time — these never change between calls.
+_SIZE = 64
+_CENTER = _SIZE // 2
+_RADIUS = 30
+_OUTER = float(_RADIUS + 8)
+
+_xs, _ys = np.meshgrid(np.arange(_SIZE), np.arange(_SIZE))
+_dist = np.sqrt((_xs - _CENTER) ** 2 + (_ys - _CENTER) ** 2).astype(np.float32)
+_glow_mask = _dist <= _OUTER
+_hard_mask = _dist <= _RADIUS
+_glow_alpha_base = np.where(
+    _glow_mask,
+    np.clip((1.0 - _dist / _OUTER) * ((_OUTER - _RADIUS) / 8.0) * 255, 0, 255),
+    0,
+).astype(np.uint8)
+# Final alpha channel: full opacity inside hard circle, soft glow outside
+_ALPHA_CHANNEL = np.where(_hard_mask, np.uint8(255), _glow_alpha_base).astype(np.uint8)
+
 
 def create_score_icon(score: float) -> QIcon:
     """Create a 64×64 colour-coded circular tray icon displaying the posture score.
 
     Colour mapping: HSV hue 0 (red, score=0) → 60 (green, score=100).
     Renders a hard-edge circle with a soft outer glow ring, a layered drop-shadow,
-    and white score text centred inside. Uses vectorised NumPy coordinate grids
-    and OpenCV putText rather than nested pixel loops for performance.
+    and white score text centred inside. Geometry arrays are pre-computed at module
+    load time; only hue and text rendering vary per call.
     """
-    size = 64
-    img = np.zeros((size, size, 4), dtype=np.uint8)
-
-    center = size // 2
-    radius = 30
-
-    # Build coordinate grids once
-    xs, ys = np.meshgrid(np.arange(size), np.arange(size))
-    dist = np.sqrt((xs - center) ** 2 + (ys - center) ** 2).astype(np.float32)
-
-    # Soft glow ring: blend alpha from outer edge to hard circle boundary
-    outer = float(radius + 8)
-    glow_mask = dist <= outer
-    glow_alpha = np.where(
-        glow_mask,
-        np.clip((1.0 - dist / outer) * ((outer - radius) / 8.0) * 255, 0, 255),
-        0,
-    ).astype(np.uint8)
-
-    # Hard circle keeps full opacity
-    hard_mask = dist <= radius
-    glow_alpha = np.where(hard_mask, 255, glow_alpha).astype(np.uint8)
-    img[:, :, 3] = glow_alpha
+    img = np.zeros((_SIZE, _SIZE, 4), dtype=np.uint8)
+    img[:, :, 3] = _ALPHA_CHANNEL
 
     # Hue 0 (red) → 60 (green) mapped from score 0–100
     hue = int(np.clip(score * 60 / 100, 0, 60))
@@ -45,8 +42,8 @@ def create_score_icon(score: float) -> QIcon:
     font_scale = 2.0 if len(text) == 1 else (1.5 if len(text) == 2 else 1.2)
     thickness = 3
     text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
-    text_x = (size - text_size[0]) // 2
-    text_y = (size + text_size[1]) // 2
+    text_x = (_SIZE - text_size[0]) // 2
+    text_y = (_SIZE + text_size[1]) // 2
 
     temp = img.copy()
     for offset, alpha in zip([(2, 2), (1, 1)], [120, 180]):

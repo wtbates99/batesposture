@@ -132,10 +132,11 @@ class CameraService:
                 break
 
             processing_time = time.time() - start_time
-            with self._lock:
-                frame_time = self._frame_time
-            if processing_time < frame_time:
-                time.sleep(frame_time - processing_time)
+            # _frame_time is a float; CPython's GIL makes this read atomic.
+            # reload_settings() only runs while _paused is set (loop is idle),
+            # so this never races with a live capture iteration.
+            if processing_time < self._frame_time:
+                time.sleep(self._frame_time - processing_time)
 
     def get_latest_frame(self):
         with self._lock:
