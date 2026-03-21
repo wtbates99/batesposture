@@ -160,7 +160,9 @@ class PoseDetector:
         points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
         return self._compute_posture_metrics_from_points(points)
 
-    def _compute_posture_metrics_from_points(self, points: np.ndarray) -> Dict[str, float]:
+    def _compute_posture_metrics_from_points(
+        self, points: np.ndarray
+    ) -> Dict[str, float]:
         nose = points[self.mp_pose.PoseLandmark.NOSE]
         ears = points[
             [self.mp_pose.PoseLandmark.LEFT_EAR, self.mp_pose.PoseLandmark.RIGHT_EAR]

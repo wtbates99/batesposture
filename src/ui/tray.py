@@ -601,4 +601,3 @@ class PostureTrackerTray(QSystemTrayIcon):
 
     def _signal_handler(self, signum, frame):  # noqa: D401, N803
         self.quit_application()
-
