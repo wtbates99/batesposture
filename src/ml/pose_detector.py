@@ -6,6 +6,7 @@ from typing import Any, Dict, Tuple
 
 import cv2
 import json
+import time
 import mediapipe as mp
 import numpy as np
 
@@ -66,11 +67,19 @@ class PoseDetector:
         )
         # Cached CLAHE object — creating one per frame is expensive at 30 FPS
         self._clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        # Pre-warm MediaPipe so the first real frame isn't delayed by model init
+        # Pre-warm MediaPipe so the first real frame isn't delayed by model init.
+        # Use a noise frame (not zeros) so MediaPipe does real work — better proxy
+        # for actual inference cost on this hardware.
+        self.prewarm_duration_ms: float = 0.0
         try:
-            _dummy = np.zeros((480, 640, 3), dtype=np.uint8)
+            rng = np.random.default_rng(0)
+            _dummy = rng.integers(50, 200, (480, 640, 3), dtype=np.uint8)
+            _t0 = time.monotonic()
             self.pose.process(cv2.cvtColor(_dummy, cv2.COLOR_BGR2RGB))
-            logger.debug("MediaPipe model pre-warmed")
+            self.prewarm_duration_ms = (time.monotonic() - _t0) * 1000
+            logger.debug(
+                "MediaPipe model pre-warmed in %.0f ms", self.prewarm_duration_ms
+            )
         except Exception:  # noqa: BLE001
             pass
 

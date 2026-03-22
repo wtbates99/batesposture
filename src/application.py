@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Optional
 
 from PyQt6.QtWidgets import QApplication
@@ -18,36 +17,26 @@ from ui.tray import PostureTrackerTray
 logger = logging.getLogger(__name__)
 
 
-def _is_low_end_hardware() -> bool:
-    """Return True if the machine has limited CPU resources."""
-    cpu_count = os.cpu_count() or 4
-    try:
-        import psutil
-
-        ram_gb = psutil.virtual_memory().total / (1024**3)
-        return cpu_count <= 4 or ram_gb < 8
-    except ImportError:
-        return cpu_count <= 4
-
-
 class ApplicationFacade:
     """Wires all services together and owns their lifetimes.
 
     Construction order matters:
-    1. SettingsService — loaded first; adaptive resolution may mutate it before any
-       other service reads frame_width / frame_height.
-    2. PoseDetector — reads resolution from settings at init time.
-    3. Remaining services (CameraService, ScoreService, NotificationService).
-    4. Optional Database — only created when enable_database_logging is True.
-    5. PostureTrackerTray — receives all services and starts the Qt event loop.
+    1. SettingsService — loaded first so all services read a consistent config.
+    2. PoseDetector — initialised next; its pre-warm timing drives the adaptive
+       resolution decision in step 3.
+    3. Adaptive resolution check — may lower frame_width/height in settings and on
+       the detector before CameraService or any other consumer reads them.
+    4. Remaining services (CameraService, ScoreService, NotificationService).
+    5. Optional Database — only created when enable_database_logging is True.
+    6. PostureTrackerTray — receives all services and starts the Qt event loop.
     """
 
     def __init__(self, app: QApplication) -> None:
         self._qt_app = app
         self.settings = SettingsService()
-        self._maybe_apply_adaptive_resolution()
         self.scheduler = TaskScheduler()
         self.pose_detector = PoseDetector(self.settings)
+        self._maybe_apply_adaptive_resolution()
         self.camera_service = CameraService(self.settings)
         self.score_service = ScoreService(self.settings)
         self.notification_service = NotificationService(
@@ -71,19 +60,26 @@ class ApplicationFacade:
         )
 
     def _maybe_apply_adaptive_resolution(self) -> None:
-        """Drop to 640×480 on low-end hardware when adaptive_resolution is enabled or the
-        user has not overridden the default 1280×720 resolution."""
+        """Drop to 640×480 when adaptive_resolution is enabled and the MediaPipe pre-warm
+        took longer than 100 ms — a reliable proxy for whether this hardware can sustain
+        real-time inference at 1280×720.  Updates both the persisted settings and the
+        already-constructed PoseDetector so it preprocesses at the lower resolution."""
         runtime = self.settings.runtime
-        if (
+        if not (
             runtime.adaptive_resolution
             and runtime.frame_width == 1280
             and runtime.frame_height == 720
         ):
-            if _is_low_end_hardware():
-                self.settings.update_runtime(frame_width=640, frame_height=480)
-                logger.info(
-                    "Adaptive resolution: switched to 640×480 on low-end hardware"
-                )
+            return
+        prewarm_ms = self.pose_detector.prewarm_duration_ms
+        if prewarm_ms <= 100.0:
+            return
+        self.settings.update_runtime(frame_width=640, frame_height=480)
+        self.pose_detector.frame_width = 640
+        self.pose_detector.frame_height = 480
+        logger.info(
+            "Adaptive resolution: switched to 640×480 (pre-warm %.0f ms)", prewarm_ms
+        )
 
     def run(self) -> int:
         self.tray.show()
