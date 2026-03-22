@@ -76,10 +76,14 @@ def get_resource_path(relative_path: str) -> str:
 
 
 def _default_tracking_intervals() -> Dict[str, int]:
+    # "Continuous (always on)" maps to 0 (special value meaning no scheduled stop).
+    # Placed last so periodic options appear first and are the obvious choices.
     return {
+        "Every 5 minutes": 5,
         "Every 15 minutes": 15,
         "Every 30 minutes": 30,
         "Every hour": 60,
+        "Continuous (always on)": 0,
     }
 
 
@@ -121,7 +125,7 @@ class RuntimeSettings:
     tracking_intervals: Dict[str, int] = field(
         default_factory=_default_tracking_intervals
     )
-    tracking_duration_minutes: int = 1
+    tracking_duration_minutes: int = 2
     enable_database_logging: bool = False
     db_write_interval_seconds: int = 900
     notifications_enabled: bool = True

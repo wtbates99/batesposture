@@ -72,7 +72,9 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         self.tracking_enabled = False
         self.video_window: Optional[PostureDashboard] = None
-        self.tracking_interval = 0
+        # Default to 30-minute intervals so the camera isn't running all day.
+        # Users can switch to "Continuous (always on)" from the interval menu.
+        self.tracking_interval = 30
         self.last_tracking_time: Optional[datetime] = None
         self.last_db_save: Optional[datetime] = None
         self._continuous_tracking_start: Optional[datetime] = None
@@ -217,9 +219,13 @@ class PostureTrackerTray(QSystemTrayIcon):
             action = QAction(label, interval_menu, checkable=True)
             action.setData(minutes)
             action.triggered.connect(lambda checked, m=minutes: self.set_interval(m))
+            if minutes == 0:
+                action.setToolTip(
+                    "Camera stays on continuously — higher CPU and battery use."
+                )
             interval_menu.addAction(action)
             interval_group.addAction(action)
-            if minutes == 0:
+            if minutes == self.tracking_interval:
                 action.setChecked(True)
         return interval_menu
 
@@ -439,9 +445,14 @@ class PostureTrackerTray(QSystemTrayIcon):
     # ------------------------
     def set_interval(self, minutes: int) -> None:
         self.tracking_interval = minutes
-        if minutes > 0:
+        if minutes == 0:
             self._notifications.notify_interval_change(
-                f"Checking posture every {minutes} minutes"
+                "Continuous tracking enabled — camera stays on."
+            )
+        else:
+            duration = self._settings.runtime.tracking_duration_minutes
+            self._notifications.notify_interval_change(
+                f"Scanning for {duration} min every {minutes} min"
             )
         self.last_tracking_time = None if minutes > 0 else self.last_tracking_time
         if minutes == 0 and not self.tracking_enabled:
@@ -456,10 +467,16 @@ class PostureTrackerTray(QSystemTrayIcon):
         if not self.last_tracking_time:
             self.last_tracking_time = current_time
             self._start_interval_tracking()
-        elif current_time - self.last_tracking_time >= timedelta(
-            minutes=self.tracking_interval
-        ):
+            return
+        elapsed = current_time - self.last_tracking_time
+        remaining = timedelta(minutes=self.tracking_interval) - elapsed
+        remaining_s = remaining.total_seconds()
+        if remaining_s <= 0:
             self._start_interval_tracking()
+        elif not self.tracking_enabled:
+            mins = int(remaining_s // 60)
+            secs = int(remaining_s % 60)
+            self.setToolTip(f"Next scan in {mins}:{secs:02d}")
 
     def _start_interval_tracking(self) -> None:
         self.last_tracking_time = datetime.now()
