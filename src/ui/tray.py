@@ -353,6 +353,8 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.video_window = PostureDashboard(
                 baseline_score=profile.baseline_posture_score,
                 preferred_theme=profile.preferred_theme,
+                baseline_neck_angle=profile.baseline_neck_angle,
+                baseline_shoulder_level=profile.baseline_shoulder_level,
                 history=history,
             )
             self.video_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)

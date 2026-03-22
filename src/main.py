@@ -51,8 +51,14 @@ def _kill_existing_instance(lock_file: str) -> None:
                 process.terminate()
                 process.wait(timeout=3)
                 logger.info("Terminated previous instance (PID %d)", old_pid)
-        except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+        except psutil.NoSuchProcess:
             pass
+        except psutil.TimeoutExpired:
+            logger.warning(
+                "Previous instance (PID %d) did not exit within 3 seconds; "
+                "proceeding anyway — camera access may conflict.",
+                old_pid,
+            )
     except (FileNotFoundError, ValueError):
         pass
 

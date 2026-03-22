@@ -149,7 +149,7 @@ class UserProfileSettings:
     has_completed_onboarding: bool = False
     baseline_posture_score: float = 75.0
     baseline_neck_angle: float = 10.0
-    baseline_shoulder_level: float = 2.0
+    baseline_shoulder_level: float = 0.05
     preferred_theme: str = "system"
     language_code: str = "en_US"
 

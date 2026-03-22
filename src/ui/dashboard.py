@@ -159,6 +159,8 @@ class PostureDashboard(QDialog):
         self,
         baseline_score: float,
         preferred_theme: str,
+        baseline_neck_angle: float = 10.0,
+        baseline_shoulder_level: float = 0.05,
         history: Optional[List[float]] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
@@ -168,6 +170,8 @@ class PostureDashboard(QDialog):
         if history:
             self.recent_scores.extend(history)
         self.baseline_score = baseline_score
+        self.baseline_neck_angle = baseline_neck_angle
+        self.baseline_shoulder_level = baseline_shoulder_level
 
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(12, 12, 12, 12)
@@ -350,11 +354,13 @@ class PostureDashboard(QDialog):
         else:
             cues: List[str] = []
             if metrics:
-                if metrics.get("neck_angle", 0.0) > 15.0:
+                neck_threshold = self.baseline_neck_angle + 5.0
+                shoulder_threshold = self.baseline_shoulder_level + 0.02
+                if metrics.get("neck_angle", 0.0) > neck_threshold:
                     cues.append(
                         self.tr("Gently draw your head back over your shoulders.")
                     )
-                if metrics.get("shoulder_vertical_delta", 0.0) > 0.05:
+                if metrics.get("shoulder_vertical_delta", 0.0) > shoulder_threshold:
                     cues.append(self.tr("Level your shoulders to center your posture."))
                 if metrics.get("spine_angle", 0.0) > 10.0:
                     cues.append(self.tr("Lengthen through your spine and sit tall."))
