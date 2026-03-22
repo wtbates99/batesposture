@@ -75,6 +75,20 @@ class ScoreService:
             self._streak_start = None
             self._best_streak_s = 0.0
 
+    def mark_absent(self) -> None:
+        """Called when no human is detected in frame.
+
+        Breaks any active good-posture streak (time away doesn't count toward
+        it) without adding a spurious zero score to the rolling buffer.
+        Idempotent — safe to call every tick while the user is absent.
+        """
+        with self._lock:
+            if self._streak_start is not None:
+                elapsed = monotonic() - self._streak_start
+                if elapsed > self._best_streak_s:
+                    self._best_streak_s = elapsed
+                self._streak_start = None
+
     def add_score(self, score: float) -> None:
         with self._lock:
             if self._session_start is None:

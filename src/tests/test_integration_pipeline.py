@@ -141,7 +141,52 @@ def test_settings_reload_resizes_buffer(settings, score_service):
 
 
 # ---------------------------------------------------------------------------
-# 5. Thread safety: concurrent add_score calls don't corrupt state
+# 5. Absence handling — mark_absent() must not pollute the score buffer
+# ---------------------------------------------------------------------------
+
+
+def test_mark_absent_does_not_add_scores(score_service):
+    """mark_absent() must leave the rolling buffer untouched."""
+    for _ in range(5):
+        score_service.add_score(80.0)
+    avg_before = score_service.average()
+
+    for _ in range(10):
+        score_service.mark_absent()
+
+    avg_after = score_service.average()
+    assert avg_after == pytest.approx(avg_before, abs=1.0)
+
+
+def test_mark_absent_breaks_streak(score_service):
+    """A good-posture streak must be ended by an absence so time away never inflates it."""
+    for _ in range(10):
+        score_service.add_score(90.0)
+    assert score_service.current_streak_s > 0.0
+
+    score_service.mark_absent()
+    assert score_service.current_streak_s == 0.0
+
+
+def test_mark_absent_saves_best_streak(score_service):
+    """best_streak_s must capture the streak that was broken by absence."""
+    for _ in range(10):
+        score_service.add_score(90.0)
+    streak_before = score_service.current_streak_s
+
+    score_service.mark_absent()
+    assert score_service.best_streak_s >= streak_before
+
+
+def test_mark_absent_idempotent_when_no_streak(score_service):
+    """Calling mark_absent() repeatedly without a streak must not raise."""
+    for _ in range(5):
+        score_service.mark_absent()
+    assert score_service.current_streak_s == 0.0
+
+
+# ---------------------------------------------------------------------------
+# 6. Thread safety: concurrent add_score calls don't corrupt state
 # ---------------------------------------------------------------------------
 
 

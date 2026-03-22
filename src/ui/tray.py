@@ -383,16 +383,24 @@ class PostureTrackerTray(QSystemTrayIcon):
         frame, score = self._camera_service.get_latest_frame()
         if frame is None:
             return
+
+        results_bundle = self._camera_service.get_latest_pose_results()
+
+        if not isinstance(results_bundle, PoseDetectionResult):
+            # No human in frame — pause streak, skip scoring/logging/notifications.
+            self._scores.mark_absent()
+            self.setToolTip("Away from desk")
+            if isinstance(self.video_window, PostureDashboard):
+                self.video_window.update_frame(frame)
+            return
+
         self._scores.add_score(score)
         average_score, stats = self._scores.average_and_stats()
         if abs(average_score - self._last_icon_score) >= 1.0:
             self.setIcon(create_score_icon(average_score))
             self._last_icon_score = average_score
 
-        results_bundle = self._camera_service.get_latest_pose_results()
-        metrics: Optional[Dict[str, float]] = None
-        if isinstance(results_bundle, PoseDetectionResult):
-            metrics = results_bundle.metrics
+        metrics: Optional[Dict[str, float]] = results_bundle.metrics
 
         if self._database and self._settings.runtime.enable_database_logging:
             self._save_to_db(average_score, results_bundle)
