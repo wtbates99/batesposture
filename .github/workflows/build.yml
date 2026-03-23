@@ -23,17 +23,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest      # Apple Silicon (arm64)
-            platform: macOS-arm64
-            artifact_name: BatesPosture-macOS-arm64.dmg
-
           - os: windows-latest
             platform: Windows
-            artifact_name: BatesPosture-Windows.zip
 
           - os: ubuntu-22.04
             platform: Linux
-            artifact_name: BatesPosture-Linux.tar.gz
 
     steps:
       # ── checkout ────────────────────────────────────────────────────────────
@@ -51,7 +45,7 @@ jobs:
       - name: Install dependencies (including PyInstaller)
         run: uv sync --all-groups
 
-      # ── Linux system libraries for Qt / OpenCV / MediaPipe ─────────────────
+      # ── Linux system libraries needed at build time ──────────────────────────
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
@@ -67,6 +61,7 @@ jobs:
       # ── icon conversion ──────────────────────────────────────────────────────
       - name: Convert icon → .ico (Windows)
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           uv run python - <<'EOF'
           from PIL import Image
@@ -75,31 +70,16 @@ jobs:
                    sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
           print("icon.ico written")
           EOF
-        shell: bash
 
-      - name: Convert icon → .icns (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          ICONSET=src/static/icon.iconset
-          mkdir -p "$ICONSET"
-          for size in 16 32 64 128 256 512; do
-            sips -z $size $size src/static/icon.png \
-              --out "$ICONSET/icon_${size}x${size}.png"          > /dev/null 2>&1
-            sips -z $((size*2)) $((size*2)) src/static/icon.png \
-              --out "$ICONSET/icon_${size}x${size}@2x.png"       > /dev/null 2>&1
-          done
-          iconutil -c icns "$ICONSET" -o src/static/icon.icns
-          echo "icon.icns written"
-
-      # ── PyInstaller build ───────────────────────────────────────────────────
-      - name: Build with PyInstaller (Linux — offscreen Qt)
+      # ── PyInstaller build ────────────────────────────────────────────────────
+      - name: Build with PyInstaller (Linux)
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
         run: uv run pyinstaller batesposture.spec --noconfirm
 
-      - name: Build with PyInstaller (macOS / Windows)
-        if: runner.os != 'Linux'
+      - name: Build with PyInstaller (Windows)
+        if: runner.os == 'Windows'
         run: uv run pyinstaller batesposture.spec --noconfirm
 
       # ── Resolve version tag ──────────────────────────────────────────────────
@@ -113,47 +93,51 @@ jobs:
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── Ad-hoc sign (macOS) — removes "damaged app" Gatekeeper error ────────
-      - name: Ad-hoc sign app bundle (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          codesign --deep --force --sign - dist/BatesPosture.app
-          xattr -cr dist/BatesPosture.app
-
-      # ── Package artifacts ────────────────────────────────────────────────────
-      - name: Package → DMG (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          VERSION="${{ steps.version.outputs.tag }}"
-          DMG_NAME="BatesPosture-${VERSION}-${{ matrix.platform }}.dmg"
-          hdiutil create \
-            -volname "BatesPosture" \
-            -srcfolder "dist/BatesPosture.app" \
-            -ov -format UDZO \
-            "${DMG_NAME}"
-          echo "artifact_path=${DMG_NAME}" >> "$GITHUB_ENV"
-          echo "artifact_file=${DMG_NAME}" >> "$GITHUB_ENV"
-
-      - name: Package → ZIP (Windows)
+      # ── Windows: Inno Setup installer (.exe, no admin required) ─────────────
+      - name: Build installer (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $VERSION = "${{ steps.version.outputs.tag }}"
-          $ZIP_NAME = "BatesPosture-${VERSION}-Windows.zip"
-          Compress-Archive -Path "dist\BatesPosture\*" -DestinationPath $ZIP_NAME
-          echo "artifact_path=$ZIP_NAME" >> $env:GITHUB_ENV
-          echo "artifact_file=$ZIP_NAME" >> $env:GITHUB_ENV
+          $VERSION     = "${{ steps.version.outputs.tag }}"
+          $VERSION_NUM = $VERSION -replace '^v', ''
+          $OUT_NAME    = "BatesPosture-$VERSION-Setup"
+          $ISCC        = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $ISCC `
+            "/DAppVersion=$VERSION_NUM" `
+            "/DOutputFilename=$OUT_NAME" `
+            "scripts\setup.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "artifact_path=installer-output\$OUT_NAME.exe" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Package → tar.gz (Linux)
+      # ── Linux: AppImage (self-contained, zero system deps for end users) ─────
+      - name: Build AppImage (Linux)
         if: runner.os == 'Linux'
         run: |
           VERSION="${{ steps.version.outputs.tag }}"
-          TARBALL="BatesPosture-${VERSION}-Linux.tar.gz"
-          tar -czf "${TARBALL}" -C dist BatesPosture
-          echo "artifact_path=${TARBALL}" >> "$GITHUB_ENV"
-          echo "artifact_file=${TARBALL}" >> "$GITHUB_ENV"
+          APPIMAGE_NAME="BatesPosture-${VERSION}-Linux.AppImage"
 
-      # ── Upload build artifact (available between jobs) ───────────────────────
+          # Download appimagetool (itself an AppImage; use --appimage-extract-and-run
+          # so FUSE is not required on the CI runner)
+          wget -q \
+            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" \
+            -O appimagetool
+          chmod +x appimagetool
+
+          # Build AppDir
+          mkdir -p BatesPosture.AppDir
+          cp -r dist/BatesPosture          BatesPosture.AppDir/
+          cp src/static/icon.png           BatesPosture.AppDir/batesposture.png
+          cp scripts/batesposture.desktop  BatesPosture.AppDir/
+          cp scripts/AppRun                BatesPosture.AppDir/AppRun
+          chmod +x BatesPosture.AppDir/AppRun
+
+          # Package
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run \
+            BatesPosture.AppDir "${APPIMAGE_NAME}"
+
+          echo "artifact_path=${APPIMAGE_NAME}" >> "$GITHUB_ENV"
+
+      # ── Upload artifact (shared between jobs) ────────────────────────────────
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -161,7 +145,7 @@ jobs:
           path: ${{ env.artifact_path }}
           retention-days: 7
 
-  # ── Create GitHub Release and attach all artifacts ─────────────────────────
+  # ── Create GitHub Release and attach all artifacts ──────────────────────────
   release:
     name: Publish GitHub Release
     needs: build
@@ -202,22 +186,32 @@ jobs:
 
             | Platform | File |
             |---|---|
-            | macOS (Apple Silicon) | `BatesPosture-${{ steps.version.outputs.tag }}-macOS-arm64.dmg` |
-            | Windows | `BatesPosture-${{ steps.version.outputs.tag }}-Windows.zip` |
-            | Linux | `BatesPosture-${{ steps.version.outputs.tag }}-Linux.tar.gz` |
+            | **Windows 10/11** (64-bit) | `BatesPosture-${{ steps.version.outputs.tag }}-Setup.exe` |
+            | **Linux** x86-64 | `BatesPosture-${{ steps.version.outputs.tag }}-Linux.AppImage` |
 
-            ### Install
+            ---
 
-            **macOS** — Open the `.dmg` and drag **BatesPosture** to Applications.
-            First launch: right-click the app → **Open** → **Open** to bypass the Gatekeeper warning (one-time).
-            Or run `xattr -cr /Applications/BatesPosture.app` in Terminal.
+            ### Windows
 
-            **Windows** — Extract the zip and run `BatesPosture.exe`.
+            1. Download **`BatesPosture-${{ steps.version.outputs.tag }}-Setup.exe`** and run it.
+            2. The installer does **not** require administrator rights — it installs to your user profile and adds a Start Menu entry.
+            3. If Windows SmartScreen shows a warning, click **More info → Run anyway** (expected for unsigned executables).
+            4. Grant camera permission when Windows prompts you — the app needs it to monitor posture.
+            5. BatesPosture appears in your system tray (bottom-right corner).
 
-            **Linux** — Extract the tar.gz and run `./BatesPosture/BatesPosture`.
-            Ensure your desktop environment supports system-tray icons (most do).
+            ### Linux
+
+            ```bash
+            chmod +x BatesPosture-${{ steps.version.outputs.tag }}-Linux.AppImage
+            ./BatesPosture-${{ steps.version.outputs.tag }}-Linux.AppImage
+            ```
+
+            The AppImage is **fully self-contained** — no Python, no system libraries, no installation required.
+            GNOME users may need the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/) for system-tray support.
+
+            ---
 
             ### Requirements
 
-            - A webcam
-            - macOS 12+, Windows 10+, or a modern Linux desktop
+            - A webcam (built-in or USB)
+            - Windows 10/11 (64-bit) **or** a modern Linux desktop (Ubuntu 20.04+, Fedora 35+, etc.)

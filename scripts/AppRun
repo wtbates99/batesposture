@@ -1,0 +1,4 @@
+#!/bin/bash
+# AppImage entry point — launches the PyInstaller onedir binary.
+HERE="$(dirname "$(readlink -f "${0}")")"
+exec "${HERE}/BatesPosture/BatesPosture" "$@"

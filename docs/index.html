@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BatesPosture — Real-time posture monitoring for your desktop</title>
   <meta name="description"
-    content="Free, open-source posture monitor that uses your webcam and MediaPipe to score your posture in real time. Runs entirely on your machine. Pre-built binaries for Windows and Linux; macOS users build from source." />
+    content="Free, open-source posture monitor that uses your webcam and MediaPipe to score your posture in real time. Runs entirely on your machine. One-click installer for Windows; self-contained AppImage for Linux." />
   <link rel="icon" type="image/png" href="icon.png" />
   <style>
     /* ── reset / tokens ────────────────────────────────────────────────── */
@@ -472,42 +472,30 @@
   <div class="container">
     <div class="section-label">Install</div>
     <h2>Get started in minutes</h2>
-    <p class="section-sub">Pre-built binaries for Windows and Linux — no Python required. macOS users must build from source.</p>
+    <p class="section-sub">One-click installer for Windows. Self-contained AppImage for Linux. No Python, no dependencies, no admin rights needed.</p>
 
     <div class="install-tabs">
       <button class="tab-btn active" onclick="showTab('win')">Windows</button>
       <button class="tab-btn" onclick="showTab('linux')">Linux</button>
-      <button class="tab-btn" onclick="showTab('mac')">macOS (build from source)</button>
-    </div>
-
-    <div id="tab-mac" class="tab-content">
-      <p style="margin-bottom:16px;color:var(--muted);font-size:.9rem;">No pre-built macOS binary is provided. Build from source using <a href="https://github.com/astral-sh/uv" target="_blank" rel="noopener">uv</a>:</p>
-      <ol class="install-steps">
-        <li><span class="step-n">1</span><span>Install <a href="https://github.com/astral-sh/uv#installation" target="_blank" rel="noopener">uv</a> and Python 3.11+.</span></li>
-        <li><span class="step-n">2</span><span>Clone the repo: <code>git clone https://github.com/wtbates99/batesposture.git &amp;&amp; cd batesposture</code></span></li>
-        <li><span class="step-n">3</span><span>Install dependencies: <code>uv sync --all-groups</code></span></li>
-        <li><span class="step-n">4</span><span>Run the app: <code>uv run python src/main.py</code></span></li>
-        <li><span class="step-n">5</span><span>Or build a local binary: <code>./scripts/build_local.sh</code></span></li>
-      </ol>
     </div>
 
     <div id="tab-win" class="tab-content active">
       <ol class="install-steps">
-        <li><span class="step-n">1</span><span>Download and extract <strong>BatesPosture-Windows.zip</strong>.</span></li>
-        <li><span class="step-n">2</span><span>Open the extracted <code>BatesPosture</code> folder and run <code>BatesPosture.exe</code>.</span></li>
+        <li><span class="step-n">1</span><span>Download <strong>BatesPosture-Setup.exe</strong> and run it.</span></li>
+        <li><span class="step-n">2</span><span>The installer does <strong>not</strong> require administrator rights — it installs to your user profile and adds a Start Menu entry.</span></li>
         <li><span class="step-n">3</span><span>If Windows SmartScreen appears, click <strong>More info → Run anyway</strong>. This is expected for unsigned executables.</span></li>
-        <li><span class="step-n">4</span><span>Grant <strong>camera permission</strong> if Windows Privacy Settings prompts you.</span></li>
-        <li><span class="step-n">5</span><span>The app appears in your system tray (bottom-right, near the clock). You may need to expand hidden icons.</span></li>
+        <li><span class="step-n">4</span><span>Grant <strong>camera permission</strong> when Windows prompts you.</span></li>
+        <li><span class="step-n">5</span><span>BatesPosture appears in your system tray (bottom-right, near the clock). You may need to expand hidden icons.</span></li>
       </ol>
     </div>
 
     <div id="tab-linux" class="tab-content">
       <ol class="install-steps">
-        <li><span class="step-n">1</span><span>Download <strong>BatesPosture-Linux.tar.gz</strong> and extract it: <code>tar -xzf BatesPosture-Linux.tar.gz</code></span></li>
-        <li><span class="step-n">2</span><span>Make the binary executable: <code>chmod +x BatesPosture/BatesPosture</code></span></li>
-        <li><span class="step-n">3</span><span>Run it: <code>./BatesPosture/BatesPosture</code></span></li>
-        <li><span class="step-n">4</span><span>Ensure your desktop environment supports system-tray icons. GNOME users may need the <strong>AppIndicator</strong> extension.</span></li>
-        <li><span class="step-n">5</span><span>Optional: create a <code>.desktop</code> launcher or add to startup applications for automatic launch at login.</span></li>
+        <li><span class="step-n">1</span><span>Download <strong>BatesPosture-Linux.AppImage</strong>.</span></li>
+        <li><span class="step-n">2</span><span>Make it executable: <code>chmod +x BatesPosture-*.AppImage</code></span></li>
+        <li><span class="step-n">3</span><span>Run it: <code>./BatesPosture-*.AppImage</code></span></li>
+        <li><span class="step-n">4</span><span>No Python, no system libraries needed — everything is bundled inside the AppImage.</span></li>
+        <li><span class="step-n">5</span><span>GNOME users may need the <a href="https://extensions.gnome.org/extension/615/appindicator-support/" target="_blank" rel="noopener"><strong>AppIndicator extension</strong></a> for system-tray support.</span></li>
       </ol>
     </div>
   </div>
@@ -522,30 +510,21 @@
 
     <div class="platform-grid">
       <div class="platform-card">
-        <h3>🍎 macOS (build from source)</h3>
-        <ul>
-          <li>macOS 12 Monterey or later</li>
-          <li>Python 3.11+ and uv</li>
-          <li>Built-in or USB webcam</li>
-          <li>Camera permission granted</li>
-        </ul>
-      </div>
-      <div class="platform-card">
         <h3>🪟 Windows</h3>
         <ul>
           <li>Windows 10 or 11 (64-bit)</li>
           <li>Built-in or USB webcam</li>
           <li>Camera permission granted</li>
-          <li>Visual C++ Redistributable</li>
+          <li>No admin rights required</li>
         </ul>
       </div>
       <div class="platform-card">
         <h3>🐧 Linux</h3>
         <ul>
-          <li>Ubuntu 22.04+ or equivalent</li>
+          <li>Ubuntu 20.04+ or equivalent</li>
           <li>X11 or Wayland desktop</li>
-          <li>Webcam accessible at /dev/video0</li>
-          <li>libxcb and libGL installed</li>
+          <li>Built-in or USB webcam</li>
+          <li>No system libraries required</li>
         </ul>
       </div>
     </div>
@@ -591,14 +570,9 @@
 
   function detectOS() {
     const ua = navigator.userAgent;
-    if (/Mac/.test(ua))     return "mac";
     if (/Win/.test(ua))     return "win";
     if (/Linux/.test(ua))   return "linux";
     return "other";
-  }
-
-  function getArch() {
-    return "arm64";
   }
 
   function assetUrl(assets, pattern) {
@@ -633,24 +607,20 @@
     const btn  = document.getElementById("primary-download");
     const lbl  = document.getElementById("primary-download-label");
 
-    if (os === "mac") {
-      btn.href = "https://github.com/wtbates99/batesposture#building-from-source";
-      lbl.textContent = "macOS: build from source";
-      btn.className = "btn btn-secondary";
-      showTab("mac");
-    } else if (os === "win") {
-      btn.href = assetUrl(assets, "Windows\\.zip");
+    if (os === "win") {
+      btn.href = assetUrl(assets, "Setup\\.exe");
       lbl.textContent = "Download for Windows";
       btn.className = "btn btn-recommended";
       showTab("win");
     } else if (os === "linux") {
-      btn.href = assetUrl(assets, "Linux\\.tar\\.gz");
+      btn.href = assetUrl(assets, "Linux\\.AppImage");
       lbl.textContent = "Download for Linux";
       btn.className = "btn btn-recommended";
       showTab("linux");
     } else {
       btn.href = RELEASES_PAGE;
       lbl.textContent = "View all downloads";
+      showTab("win");
     }
   }
 

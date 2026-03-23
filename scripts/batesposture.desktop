@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=BatesPosture
+Comment=Real-time posture monitoring for your desktop
+Exec=BatesPosture
+Icon=batesposture
+Type=Application
+Categories=Utility;
+Terminal=false
+StartupNotify=false

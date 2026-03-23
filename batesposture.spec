@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for BatesPosture — macOS · Windows · Linux.
+"""PyInstaller spec for BatesPosture — Windows · Linux.
 
 Build commands (run from repo root):
     uv run pyinstaller batesposture.spec --noconfirm
@@ -50,8 +50,6 @@ hidden_imports = [
     *collect_submodules("mediapipe"),
     # plyer platform backends
     "plyer.platforms",
-    "plyer.platforms.macosx",
-    "plyer.platforms.macosx.notification",
     "plyer.platforms.win",
     "plyer.platforms.win.notification",
     "plyer.platforms.linux",
@@ -63,26 +61,13 @@ hidden_imports = [
 ]
 
 # ── platform icon ─────────────────────────────────────────────────────────────
-# CI converts icon.png → .icns (macOS) / .ico (Windows) before running PyInstaller.
+# CI converts icon.png → .ico (Windows) before running PyInstaller.
 # Fall back to .png if the platform-native format hasn't been generated yet.
-def _icon_path(stem: str, ext: str) -> str:
-    candidate = os.path.join(SRC, "static", f"{stem}.{ext}")
-    fallback = os.path.join(SRC, "static", f"{stem}.png")
-    return candidate if os.path.exists(candidate) else fallback
-
-if sys.platform == "darwin":
-    _icon = _icon_path("icon", "icns")
-elif sys.platform == "win32":
-    _icon = _icon_path("icon", "ico")
+if sys.platform == "win32":
+    _ico = os.path.join(SRC, "static", "icon.ico")
+    _icon = _ico if os.path.exists(_ico) else os.path.join(SRC, "static", "icon.png")
 else:
-    _icon = _icon_path("icon", "png")
-
-# ── platform-specific EXE kwargs ──────────────────────────────────────────────
-_exe_kwargs: dict = {}
-if sys.platform == "darwin":
-    # Code-signing is handled post-build in CI; leave identity as None here.
-    _exe_kwargs["codesign_identity"] = None
-    _exe_kwargs["entitlements_file"] = None
+    _icon = os.path.join(SRC, "static", "icon.png")
 
 # ── analysis ──────────────────────────────────────────────────────────────────
 a = Analysis(
@@ -121,9 +106,8 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,          # GUI app — no terminal window
-    argv_emulation=False,   # not needed for a system-tray app
+    argv_emulation=False,
     icon=_icon,
-    **_exe_kwargs,
 )
 
 coll = COLLECT(
@@ -136,29 +120,3 @@ coll = COLLECT(
     upx_exclude=[],
     name="BatesPosture",
 )
-
-# ── macOS .app bundle ─────────────────────────────────────────────────────────
-if sys.platform == "darwin":
-    app = BUNDLE(
-        coll,
-        name="BatesPosture.app",
-        icon=_icon,
-        bundle_identifier="com.wtbates99.batesposture",
-        info_plist={
-            "CFBundleName": "BatesPosture",
-            "CFBundleDisplayName": "BatesPosture",
-            "CFBundleIdentifier": "com.wtbates99.batesposture",
-            "CFBundleVersion": "1.0.0",
-            "CFBundleShortVersionString": "1.0.0",
-            "CFBundlePackageType": "APPL",
-            "LSMinimumSystemVersion": "12.0",
-            "NSHighResolutionCapable": True,
-            # LSUIElement = True → background-only app; no Dock icon, no menu bar
-            "LSUIElement": True,
-            "LSApplicationCategoryType": "public.app-category.utilities",
-            "NSCameraUsageDescription": (
-                "BatesPosture needs camera access to monitor your posture in real time. "
-                "No video is recorded or transmitted."
-            ),
-        },
-    )

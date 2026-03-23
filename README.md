@@ -12,10 +12,9 @@ A real-time posture monitoring application that uses computer vision to analyse 
 - Desktop notifications with cooldown throttling and focus-mode suppression
 - Onboarding wizard with 6-second calibration to capture your personal baseline
 - SQLite database logging with CSV export
-- Rotating log files for persistent diagnostics (`~/Library/Logs/BatesPosture/` on macOS)
+- Rotating log files for persistent diagnostics (`~/.batesposture_logs/app.log`)
 - Adaptive resolution — automatically drops to 640×480 on low-end hardware when enabled
 - GPU acceleration toggle (forces MediaPipe complexity-2 model)
-- Windows and Linux pre-built binaries; macOS requires building from source
 - All processing happens locally — no video or pose data leaves your machine
 
 ## Technical Stack
@@ -35,9 +34,21 @@ Pre-built binaries for Windows and Linux are available on the **[releases page](
 
 | Platform | File |
 |---|---|
-| Windows | `BatesPosture-vX.X.X-Windows.zip` |
-| Linux | `BatesPosture-vX.X.X-Linux.tar.gz` |
-| macOS | Build from source (see below) |
+| Windows 10/11 | `BatesPosture-vX.X.X-Setup.exe` |
+| Linux (x86-64) | `BatesPosture-vX.X.X-Linux.AppImage` |
+
+### Windows
+
+Run the installer — no administrator rights required. It installs to your user profile and adds a Start Menu entry. If Windows SmartScreen shows a warning, click **More info → Run anyway** (expected for unsigned executables).
+
+### Linux
+
+```bash
+chmod +x BatesPosture-*.AppImage
+./BatesPosture-*.AppImage
+```
+
+The AppImage is fully self-contained — no Python, no system libraries, no installation required. GNOME users may need the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/) for system-tray support.
 
 ## Development Setup
 
@@ -59,7 +70,7 @@ uv run --group dev python -m pytest
 To produce a standalone executable locally:
 
 ```bash
-# macOS / Linux
+# Linux
 ./scripts/build_local.sh
 
 # Windows
@@ -72,53 +83,17 @@ Or run PyInstaller directly:
 uv run pyinstaller batesposture.spec --noconfirm
 ```
 
-Output is written to `dist/BatesPosture/` (or `dist/BatesPosture.app` on macOS).
+Output is written to `dist/BatesPosture/`.
 
 ### Releasing a new version
 
 1. Bump the version in `pyproject.toml`
 2. Commit and push, then tag the commit:
    ```bash
-   git tag v1.2.0
-   git push origin v1.2.0
+   git tag v1.0.0
+   git push origin v1.0.0
    ```
-3. GitHub Actions builds Windows and Linux binaries automatically and publishes a GitHub Release with the artifacts attached. macOS is not included in the CI build — build locally using `./scripts/build_local.sh`.
-
-### macOS (build from source)
-
-No pre-built macOS binary is provided — build and run from source:
-
-```bash
-uv sync --all-groups
-uv run python src/main.py
-
-# Or build a standalone app bundle:
-./scripts/build_local.sh
-```
-
-Camera permissions are required. Grant access in **System Settings → Privacy & Security → Camera**.
-
-### Linux
-
-Install system dependencies for PyQt6:
-
-```bash
-sudo apt install -y \
-    libxcb1 \
-    libxcb-xinerama0 \
-    libxcb-cursor0 \
-    libxkbcommon-x11-0 \
-    libxcb-render0 \
-    libxcb-render-util0
-```
-
-### Windows
-
-Install Visual C++ Redistributable if MediaPipe fails to load:
-
-```bash
-pip install msvc-runtime
-```
+3. GitHub Actions builds Windows (Inno Setup installer) and Linux (AppImage) artifacts automatically and publishes a GitHub Release with them attached.
 
 ## Usage
 
@@ -154,8 +129,6 @@ See `src/services/settings_service.py` → `KEY_TO_SECTION_FIELD` for a full lis
 
 ## Default Tuning Values
 
-These constants are defined in `settings_service.py` and imported wherever used:
-
 | Constant | Default | Description |
 |---|---|---|
 | `POOR_POSTURE_THRESHOLD_DEFAULT` | 60 | Score below which a notification fires |
@@ -172,7 +145,6 @@ All video processing runs locally. Pose landmarks and scores are only written to
 ## Troubleshooting
 
 **Camera not detected**
-- macOS: grant camera permission in System Settings → Privacy & Security → Camera
 - Try a different camera index: `POSTURE_RUNTIME_DEFAULT_CAMERA_ID=1`
 
 **Calibration fails during onboarding**
@@ -185,11 +157,10 @@ All video processing runs locally. Pose landmarks and scores are only written to
 - Lower model complexity in **Settings → Advanced → Model complexity** (0 is fastest)
 
 **GPU acceleration not working**
-- The `enable_gpu` toggle forces MediaPipe complexity-2 and relies on the device's ONNX Runtime or Metal/CUDA support. If unavailable, it falls back to CPU silently.
+- The `enable_gpu` toggle forces MediaPipe complexity-2 and relies on the device's ONNX Runtime or CUDA support. Falls back to CPU silently if unavailable.
 
 **Log files**
-- macOS: `~/Library/Logs/BatesPosture/app.log` (rotates at 5 MB, keeps 3 backups)
-- Other platforms: `~/.batesposture_logs/app.log`
+- `~/.batesposture_logs/app.log` (rotates at 5 MB, keeps 3 backups)
 
 ## Contributing
 
