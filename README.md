@@ -15,7 +15,7 @@ A real-time posture monitoring application that uses computer vision to analyse 
 - Rotating log files for persistent diagnostics (`~/Library/Logs/BatesPosture/` on macOS)
 - Adaptive resolution — automatically drops to 640×480 on low-end hardware when enabled
 - GPU acceleration toggle (forces MediaPipe complexity-2 model)
-- Cross-platform: macOS, Windows, Linux
+- Windows and Linux pre-built binaries; macOS requires building from source
 - All processing happens locally — no video or pose data leaves your machine
 
 ## Technical Stack
@@ -31,13 +31,13 @@ A real-time posture monitoring application that uses computer vision to analyse 
 
 ## Download
 
-Pre-built binaries for every platform are available on the **[releases page](https://github.com/wtbates99/batesposture/releases/latest)**, or via the **[download website](https://wtbates99.github.io/batesposture/)** which auto-detects your OS.
+Pre-built binaries for Windows and Linux are available on the **[releases page](https://github.com/wtbates99/batesposture/releases/latest)**, or via the **[download website](https://wtbates99.github.io/batesposture/)**.
 
 | Platform | File |
 |---|---|
-| macOS (Apple Silicon) | `BatesPosture-vX.X.X-macOS-arm64.dmg` |
 | Windows | `BatesPosture-vX.X.X-Windows.zip` |
 | Linux | `BatesPosture-vX.X.X-Linux.tar.gz` |
+| macOS | Build from source (see below) |
 
 ## Development Setup
 
@@ -82,17 +82,18 @@ Output is written to `dist/BatesPosture/` (or `dist/BatesPosture.app` on macOS).
    git tag v1.2.0
    git push origin v1.2.0
    ```
-3. GitHub Actions builds all three platforms automatically and publishes a GitHub Release with the artifacts attached.
+3. GitHub Actions builds Windows and Linux binaries automatically and publishes a GitHub Release with the artifacts attached. macOS is not included in the CI build — build locally using `./scripts/build_local.sh`.
 
-### macOS
+### macOS (build from source)
 
-**First launch — Gatekeeper warning:** Because the app is not notarized with an Apple Developer certificate, macOS will warn you on first open. To bypass this:
+No pre-built macOS binary is provided — build and run from source:
 
 ```bash
-# Option A: right-click the app → Open → Open (one-time only)
+uv sync --all-groups
+uv run python src/main.py
 
-# Option B: remove the quarantine attribute from Terminal
-xattr -cr /Applications/BatesPosture.app
+# Or build a standalone app bundle:
+./scripts/build_local.sh
 ```
 
 Camera permissions are required. Grant access in **System Settings → Privacy & Security → Camera**.
