@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BatesPosture — Real-time posture monitoring for your desktop</title>
   <meta name="description"
-    content="Free, open-source posture monitor that uses your webcam and MediaPipe to score your posture in real time. Runs entirely on your machine. Available for macOS, Windows, and Linux." />
+    content="Free, open-source posture monitor that uses your webcam and MediaPipe to score your posture in real time. Runs entirely on your machine. Pre-built binaries for Windows and Linux; macOS users build from source." />
   <link rel="icon" type="image/png" href="icon.png" />
   <style>
     /* ── reset / tokens ────────────────────────────────────────────────── */
@@ -472,25 +472,26 @@
   <div class="container">
     <div class="section-label">Install</div>
     <h2>Get started in minutes</h2>
-    <p class="section-sub">Download the build for your platform — no Python or dependencies required.</p>
+    <p class="section-sub">Pre-built binaries for Windows and Linux — no Python required. macOS users must build from source.</p>
 
     <div class="install-tabs">
-      <button class="tab-btn active" onclick="showTab('mac')">macOS</button>
-      <button class="tab-btn" onclick="showTab('win')">Windows</button>
+      <button class="tab-btn active" onclick="showTab('win')">Windows</button>
       <button class="tab-btn" onclick="showTab('linux')">Linux</button>
+      <button class="tab-btn" onclick="showTab('mac')">macOS (build from source)</button>
     </div>
 
-    <div id="tab-mac" class="tab-content active">
+    <div id="tab-mac" class="tab-content">
+      <p style="margin-bottom:16px;color:var(--muted);font-size:.9rem;">No pre-built macOS binary is provided. Build from source using <a href="https://github.com/astral-sh/uv" target="_blank" rel="noopener">uv</a>:</p>
       <ol class="install-steps">
-        <li><span class="step-n">1</span><span>Download the <strong>.dmg</strong> for your Mac (Apple Silicon — M1/M2/M3/M4).</span></li>
-        <li><span class="step-n">2</span><span>Open the <code>.dmg</code> and drag <strong>BatesPosture</strong> into your Applications folder.</span></li>
-        <li><span class="step-n">3</span><span>First launch: right-click the app → <strong>Open</strong>, then click <strong>Open</strong> in the dialog. This one-time step bypasses the Gatekeeper warning for unsigned apps. Alternatively run <code>xattr -cr /Applications/BatesPosture.app</code> in Terminal.</span></li>
-        <li><span class="step-n">4</span><span>Grant <strong>camera permission</strong> when prompted (System Settings → Privacy &amp; Security → Camera if denied by mistake).</span></li>
-        <li><span class="step-n">5</span><span>The app lives in your menu bar — no Dock icon by design.</span></li>
+        <li><span class="step-n">1</span><span>Install <a href="https://github.com/astral-sh/uv#installation" target="_blank" rel="noopener">uv</a> and Python 3.11+.</span></li>
+        <li><span class="step-n">2</span><span>Clone the repo: <code>git clone https://github.com/wtbates99/batesposture.git &amp;&amp; cd batesposture</code></span></li>
+        <li><span class="step-n">3</span><span>Install dependencies: <code>uv sync --all-groups</code></span></li>
+        <li><span class="step-n">4</span><span>Run the app: <code>uv run python src/main.py</code></span></li>
+        <li><span class="step-n">5</span><span>Or build a local binary: <code>./scripts/build_local.sh</code></span></li>
       </ol>
     </div>
 
-    <div id="tab-win" class="tab-content">
+    <div id="tab-win" class="tab-content active">
       <ol class="install-steps">
         <li><span class="step-n">1</span><span>Download and extract <strong>BatesPosture-Windows.zip</strong>.</span></li>
         <li><span class="step-n">2</span><span>Open the extracted <code>BatesPosture</code> folder and run <code>BatesPosture.exe</code>.</span></li>
@@ -521,10 +522,10 @@
 
     <div class="platform-grid">
       <div class="platform-card">
-        <h3>🍎 macOS</h3>
+        <h3>🍎 macOS (build from source)</h3>
         <ul>
           <li>macOS 12 Monterey or later</li>
-          <li>Apple Silicon (M1/M2/M3/M4)</li>
+          <li>Python 3.11+ and uv</li>
           <li>Built-in or USB webcam</li>
           <li>Camera permission granted</li>
         </ul>
@@ -633,9 +634,9 @@
     const lbl  = document.getElementById("primary-download-label");
 
     if (os === "mac") {
-      btn.href = assetUrl(assets, `macOS-arm64\\.dmg`);
-      lbl.textContent = "Download for macOS (Apple Silicon)";
-      btn.className = "btn btn-recommended";
+      btn.href = "https://github.com/wtbates99/batesposture#building-from-source";
+      lbl.textContent = "macOS: build from source";
+      btn.className = "btn btn-secondary";
       showTab("mac");
     } else if (os === "win") {
       btn.href = assetUrl(assets, "Windows\\.zip");
