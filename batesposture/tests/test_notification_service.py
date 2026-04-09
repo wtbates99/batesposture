@@ -21,7 +21,7 @@ def notification_service(settings_service):
     return NotificationService(settings_service, "/mock/icon.png")
 
 
-@patch("src.services.notification_service.send_notification")
+@patch("batesposture.services.notification_service.send_notification")
 @patch("time.time", return_value=1000)
 def test_notifies_when_below_threshold(mock_time, mock_send, notification_service):
     notification_service.maybe_notify_posture(40)
@@ -30,7 +30,7 @@ def test_notifies_when_below_threshold(mock_time, mock_send, notification_servic
     )
 
 
-@patch("src.services.notification_service.send_notification")
+@patch("batesposture.services.notification_service.send_notification")
 @patch("time.time", return_value=1000)
 def test_respects_cooldown(mock_time, mock_send, notification_service):
     notification_service.maybe_notify_posture(40)
@@ -39,7 +39,7 @@ def test_respects_cooldown(mock_time, mock_send, notification_service):
     assert mock_send.call_count == 1
 
 
-@patch("src.services.notification_service.send_notification")
+@patch("batesposture.services.notification_service.send_notification")
 @patch("time.time", return_value=1000)
 def test_disabled_notifications_skip(
     mock_time, mock_send, notification_service, settings_service
