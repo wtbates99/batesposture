@@ -52,20 +52,22 @@ def get_resource_path(relative_path: str) -> str:
     relative = Path(relative_path)
     candidates = []
 
+    # PyInstaller bundle: resources land at _MEIPASS root
     base_path = getattr(sys, "_MEIPASS", None)
     if base_path:
         pyinstaller_root = Path(base_path)
         candidates.append(pyinstaller_root / relative)
-        if relative.parts and relative.parts[0] == "src":
+        # strip leading package name if present (e.g. "batesposture/static/…")
+        if relative.parts and relative.parts[0] == "batesposture":
             candidates.append(pyinstaller_root / Path(*relative.parts[1:]))
 
-    module_path = Path(__file__).resolve()
-    src_root = module_path.parent.parent
-    project_root = src_root.parent
+    # Normal install: __file__ is …/batesposture/services/settings_service.py
+    pkg_root = Path(__file__).resolve().parent.parent   # …/batesposture/
+    project_root = pkg_root.parent                       # repo root
 
-    for root in (project_root, src_root):
+    for root in (project_root, pkg_root):
         candidates.append(root / relative)
-        if relative.parts and relative.parts[0] == "src":
+        if relative.parts and relative.parts[0] == "batesposture":
             candidates.append(root / Path(*relative.parts[1:]))
 
     for candidate in candidates:
@@ -104,7 +106,7 @@ def _default_posture_weights() -> List[float]:
 @dataclass(frozen=True)
 class ResourceSettings:
     icon_path: str = field(
-        default_factory=lambda: get_resource_path("src/static/icon.png")
+        default_factory=lambda: get_resource_path("batesposture/static/icon.png")
     )
     default_db_name: str = field(
         default_factory=lambda: os.path.join(

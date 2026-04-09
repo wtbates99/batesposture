@@ -10,7 +10,7 @@ import time
 import mediapipe as mp
 import numpy as np
 
-from services.settings_service import POOR_POSTURE_THRESHOLD_DEFAULT, SettingsService
+from ..services.settings_service import POOR_POSTURE_THRESHOLD_DEFAULT, SettingsService
 
 logger = logging.getLogger(__name__)
 

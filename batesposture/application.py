@@ -5,14 +5,14 @@ from typing import Optional
 
 from PyQt6.QtWidgets import QApplication
 
-from data.database import Database
-from ml.pose_detector import PoseDetector
-from services.camera_service import CameraService
-from services.notification_service import NotificationService
-from services.score_service import ScoreService
-from services.settings_service import SettingsService
-from services.task_scheduler import TaskScheduler
-from ui.tray import PostureTrackerTray
+from .data.database import Database
+from .ml.pose_detector import PoseDetector
+from .services.camera_service import CameraService
+from .services.notification_service import NotificationService
+from .services.score_service import ScoreService
+from .services.settings_service import SettingsService
+from .services.task_scheduler import TaskScheduler
+from .ui.tray import PostureTrackerTray
 
 logger = logging.getLogger(__name__)
 

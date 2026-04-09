@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from services.settings_service import SettingsService
+from ..services.settings_service import SettingsService
 
 
 class SettingsDialog(QDialog):
