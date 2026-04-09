@@ -37,6 +37,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-groups
 
+      - name: Verify key imports
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          uv run python -c "import batesposture; print('batesposture OK')"
+          uv run python -c "import cv2; print('cv2 OK')"
+          uv run python -c "import mediapipe; print('mediapipe OK')"
+          uv run python -c "from PyQt6.QtCore import QSettings; print('PyQt6 OK')"
+          uv run python -c "from batesposture.services.settings_service import SettingsService; print('SettingsService OK')"
+          uv run python -c "from batesposture.ml.pose_detector import PoseDetector; print('PoseDetector OK')"
+
       - name: Run pre-commit
         run: uv run pre-commit run --all-files
 
@@ -50,4 +61,4 @@ jobs:
       - name: pytest
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run python -m pytest -v --tb=short
+        run: uv run python -m pytest -v --tb=long
