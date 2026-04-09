@@ -1,3 +1,0 @@
-# GitHub Pages configuration — serves docs/ as the project website.
-# Enable at: Settings → Pages → Branch: main → Folder: /docs
-theme: null   # using custom HTML, no Jekyll theme needed
