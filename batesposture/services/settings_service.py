@@ -62,8 +62,8 @@ def get_resource_path(relative_path: str) -> str:
             candidates.append(pyinstaller_root / Path(*relative.parts[1:]))
 
     # Normal install: __file__ is …/batesposture/services/settings_service.py
-    pkg_root = Path(__file__).resolve().parent.parent   # …/batesposture/
-    project_root = pkg_root.parent                       # repo root
+    pkg_root = Path(__file__).resolve().parent.parent  # …/batesposture/
+    project_root = pkg_root.parent  # repo root
 
     for root in (project_root, pkg_root):
         candidates.append(root / relative)
