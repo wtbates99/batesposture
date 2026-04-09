@@ -70,7 +70,10 @@ def test_score_service_returns_zero_when_empty(score_service):
 
 
 @patch("batesposture.services.notification_service.send_notification")
-def test_notification_fires_below_threshold(mock_send, settings, notification_service):
+@patch("batesposture.services.notification_service.monotonic", return_value=1000.0)
+def test_notification_fires_below_threshold(
+    mock_monotonic, mock_send, settings, notification_service
+):
     settings.update_runtime(poor_posture_threshold=70, notification_cooldown=300)
     notification_service.maybe_notify_posture(50.0)
     mock_send.assert_called_once()
