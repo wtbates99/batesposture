@@ -16,7 +16,7 @@ def db_manager(tmp_path):
     manager.close()
 
 
-@patch("src.data.database.datetime")
+@patch("batesposture.data.database.datetime")
 def test_save_pose_data(mock_datetime, db_manager):
     mock_time = datetime(2024, 1, 1, 12, 0)
     mock_datetime.now.return_value = mock_time
