@@ -28,27 +28,25 @@ A real-time posture monitoring application that uses computer vision to analyse 
 - Python `threading.Lock` — thread-safe score buffering between camera and UI threads
 - `logging.handlers.RotatingFileHandler` — 5 MB / 3-backup rotating log files
 
-## Download
+## Install
 
-Pre-built binaries for Windows and Linux are available on the **[releases page](https://github.com/wtbates99/batesposture/releases/latest)**, or via the **[download website](https://wtbates99.github.io/batesposture/)**.
-
-| Platform | File |
-|---|---|
-| Windows 10/11 | `BatesPosture-vX.X.X-Setup.exe` |
-| Linux (x86-64) | `BatesPosture-vX.X.X-Linux.AppImage` |
-
-### Windows
-
-Run the installer — no administrator rights required. It installs to your user profile and adds a Start Menu entry. If Windows SmartScreen shows a warning, click **More info → Run anyway** (expected for unsigned executables).
-
-### Linux
+BatesPosture is distributed via **[PyPI](https://pypi.org/project/batesposture/)** — no unsigned binaries, no SmartScreen warnings.
 
 ```bash
-chmod +x BatesPosture-*.AppImage
-./BatesPosture-*.AppImage
+pip install batesposture
+batesposture
 ```
 
-The AppImage is fully self-contained — no Python, no system libraries, no installation required. GNOME users may need the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/) for system-tray support.
+Or run without installing:
+
+```bash
+pip install batesposture
+python -m batesposture
+```
+
+**Requirements:** Python 3.10+, a webcam, and Windows 10/11 or a modern Linux desktop (Ubuntu 20.04+, Fedora 35+, etc.).
+
+**Linux / GNOME:** may need the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/) for system-tray support.
 
 ## Development Setup
 
@@ -59,31 +57,11 @@ This project uses [uv](https://github.com/astral-sh/uv) for dependency managemen
 uv sync --all-groups
 
 # Run the application
-uv run python src/main.py
+uv run python -m batesposture
 
 # Run tests
-uv run --group dev python -m pytest
+uv run python -m pytest
 ```
-
-## Building from Source
-
-To produce a standalone executable locally:
-
-```bash
-# Linux
-./scripts/build_local.sh
-
-# Windows
-scripts\build_local.bat
-```
-
-Or run PyInstaller directly:
-
-```bash
-uv run pyinstaller batesposture.spec --noconfirm
-```
-
-Output is written to `dist/BatesPosture/`.
 
 ### Releasing a new version
 
@@ -93,7 +71,10 @@ Output is written to `dist/BatesPosture/`.
    git tag v1.0.0
    git push origin v1.0.0
    ```
-3. GitHub Actions builds Windows (Inno Setup installer) and Linux (AppImage) artifacts automatically and publishes a GitHub Release with them attached.
+3. GitHub Actions runs tests, builds the wheel, and publishes to PyPI automatically.
+4. A GitHub Release is created with install instructions.
+
+> **PyPI setup:** the first publish requires creating a [trusted publisher](https://docs.pypi.org/trusted-publishers/) on PyPI pointing to this repo with environment name `pypi` and workflow `build.yml`.
 
 ## Usage
 
@@ -110,22 +91,22 @@ All settings can be overridden at startup with the prefix `POSTURE_<SECTION>_<FI
 
 ```bash
 # Run at 15 FPS on a slower machine
-POSTURE_RUNTIME_DEFAULT_FPS=15 uv run python src/main.py
+POSTURE_RUNTIME_DEFAULT_FPS=15 batesposture
 
 # Automatically drop to 640×480 on low-end hardware
-POSTURE_RUNTIME_ADAPTIVE_RESOLUTION=true uv run python src/main.py
+POSTURE_RUNTIME_ADAPTIVE_RESOLUTION=true batesposture
 
 # Enable GPU-optimised MediaPipe model
-POSTURE_ML_ENABLE_GPU=true uv run python src/main.py
+POSTURE_ML_ENABLE_GPU=true batesposture
 
 # Silence notifications
-POSTURE_RUNTIME_NOTIFICATIONS_ENABLED=false uv run python src/main.py
+POSTURE_RUNTIME_NOTIFICATIONS_ENABLED=false batesposture
 
 # Use a different camera
-POSTURE_RUNTIME_DEFAULT_CAMERA_ID=1 uv run python src/main.py
+POSTURE_RUNTIME_DEFAULT_CAMERA_ID=1 batesposture
 ```
 
-See `src/services/settings_service.py` → `KEY_TO_SECTION_FIELD` for a full list of available keys.
+See `batesposture/services/settings_service.py` → `KEY_TO_SECTION_FIELD` for a full list of available keys.
 
 ## Default Tuning Values
 

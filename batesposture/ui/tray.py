@@ -16,21 +16,21 @@ from PyQt6.QtWidgets import (
     QStyle,
 )
 
-from data.database import Database
-from ml.pose_detector import PoseDetectionResult, PoseDetector
-from services.camera_service import CameraService
-from services.notification_service import NotificationService
-from services.score_service import ScoreService
-from services.settings_service import (
+from ..data.database import Database
+from ..ml.pose_detector import PoseDetectionResult, PoseDetector
+from ..services.camera_service import CameraService
+from ..services.notification_service import NotificationService
+from ..services.score_service import ScoreService
+from ..services.settings_service import (
     BREAK_REMINDER_MINUTES,
     SettingsService,
     _default_tracking_intervals,
 )
-from services.task_scheduler import TaskScheduler
-from ui.dashboard import PostureDashboard, score_grade
-from ui.onboarding import run_onboarding_if_needed
-from ui.settings_dialog import SettingsDialog
-from util__create_score_icon import create_score_icon
+from ..services.task_scheduler import TaskScheduler
+from .dashboard import PostureDashboard, score_grade
+from .onboarding import run_onboarding_if_needed
+from .settings_dialog import SettingsDialog
+from ..util__create_score_icon import create_score_icon
 
 logger = logging.getLogger(__name__)
 

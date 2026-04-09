@@ -2,37 +2,33 @@ name: posture checks
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  checks:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: |
-          uv sync
+        run: uv sync --all-groups
 
       - name: Run pre-commit
-        run: |
-          uv run pre-commit run --all
+        run: uv run pre-commit run --all-files
 
       - name: Check PR title for conventional commit format
         if: github.event_name == 'pull_request'
@@ -42,6 +38,4 @@ jobs:
           uv run python .github/workflows/title_check.py $(pwd) "$PR_TITLE"
 
       - name: pytest
-        run: |
-          cd src
-          uv run python -m pytest
+        run: uv run python -m pytest

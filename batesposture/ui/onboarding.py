@@ -21,8 +21,8 @@ from PyQt6.QtWidgets import (
     QDialog,
 )
 
-from ml.pose_detector import PoseDetector
-from services.settings_service import (
+from ..ml.pose_detector import PoseDetector
+from ..services.settings_service import (
     CALIBRATION_DURATION_SECONDS,
     CALIBRATION_TIMEOUT_MARGIN_SECONDS,
     SettingsService,

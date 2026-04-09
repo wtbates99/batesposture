@@ -6,7 +6,7 @@ import sys
 import psutil
 from PyQt6.QtWidgets import QApplication
 
-from application import ApplicationFacade
+from .application import ApplicationFacade
 
 _LOG_FORMAT = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
 _LOG_DATE_FMT = "%H:%M:%S"

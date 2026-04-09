@@ -11,12 +11,12 @@ import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = os.path.abspath(SPECPATH)  # repo root (where this .spec lives)
-SRC = os.path.join(ROOT, "src")
+PKG = os.path.join(ROOT, "batesposture")
 
 # ── data files ────────────────────────────────────────────────────────────────
 # MediaPipe ships .tflite models and proto data that must be bundled.
 datas = [
-    (os.path.join(SRC, "static", "icon.png"), "src/static"),
+    (os.path.join(PKG, "static", "icon.png"), "batesposture/static"),
     *collect_data_files("mediapipe"),
     *collect_data_files("cv2"),
     *collect_data_files("numpy"),
@@ -26,21 +26,22 @@ datas = [
 # ── hidden imports ────────────────────────────────────────────────────────────
 # PyInstaller's static analysis misses dynamically-loaded modules.
 hidden_imports = [
-    # application modules (all resolved relative to src/ via pathex)
-    "application",
-    "data.database",
-    "ml.pose_detector",
-    "services.camera_service",
-    "services.notification_service",
-    "services.score_service",
-    "services.settings_service",
-    "services.task_scheduler",
-    "ui.dashboard",
-    "ui.onboarding",
-    "ui.settings_dialog",
-    "ui.tray",
-    "util__create_score_icon",
-    "util__send_notification",
+    # application modules
+    "batesposture",
+    "batesposture.application",
+    "batesposture.data.database",
+    "batesposture.ml.pose_detector",
+    "batesposture.services.camera_service",
+    "batesposture.services.notification_service",
+    "batesposture.services.score_service",
+    "batesposture.services.settings_service",
+    "batesposture.services.task_scheduler",
+    "batesposture.ui.dashboard",
+    "batesposture.ui.onboarding",
+    "batesposture.ui.settings_dialog",
+    "batesposture.ui.tray",
+    "batesposture.util__create_score_icon",
+    "batesposture.util__send_notification",
     # PyQt6 — platform plugins are auto-collected but these are sometimes missed
     "PyQt6.QtCore",
     "PyQt6.QtGui",
@@ -64,15 +65,15 @@ hidden_imports = [
 # CI converts icon.png → .ico (Windows) before running PyInstaller.
 # Fall back to .png if the platform-native format hasn't been generated yet.
 if sys.platform == "win32":
-    _ico = os.path.join(SRC, "static", "icon.ico")
-    _icon = _ico if os.path.exists(_ico) else os.path.join(SRC, "static", "icon.png")
+    _ico = os.path.join(PKG, "static", "icon.ico")
+    _icon = _ico if os.path.exists(_ico) else os.path.join(PKG, "static", "icon.png")
 else:
-    _icon = os.path.join(SRC, "static", "icon.png")
+    _icon = os.path.join(PKG, "static", "icon.png")
 
 # ── analysis ──────────────────────────────────────────────────────────────────
 a = Analysis(
-    [os.path.join(SRC, "main.py")],
-    pathex=[ROOT, SRC],
+    [os.path.join(PKG, "__main__.py")],
+    pathex=[ROOT],
     binaries=[],
     datas=datas,
     hiddenimports=hidden_imports,
