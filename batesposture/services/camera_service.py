@@ -32,7 +32,8 @@ class CameraService:
         self._latest_frame = None
         self._latest_score = 0.0
         self._latest_pose_results = None
-        self._lock = threading.Lock()
+        self._settings_lock = threading.Lock()
+        self._processing_lock = threading.Lock()
 
     def start(self, callback: Optional[FrameCallback] = None) -> bool:
         if self._is_running.is_set():
@@ -60,7 +61,7 @@ class CameraService:
 
     def reload_settings(self) -> None:
         runtime = self._settings.runtime
-        with self._lock:
+        with self._settings_lock:
             self._camera_id = runtime.default_camera_id
             self._fps = runtime.default_fps
             self._frame_time = 1 / max(self._fps, 1)
@@ -73,8 +74,8 @@ class CameraService:
         reloading ScoreService state during live tracking. The method:
 
         1. Sets the _paused event so the loop idles at the top of its next iteration.
-        2. Acquires-then-releases the frame lock to wait for any active callback
-           invocation to finish (process_frame is infallible, so this resolves quickly).
+        2. Acquires-then-releases the processing lock to wait for any active callback
+           invocation to finish before mutating detector / scoring settings.
         3. Yields — callers may safely mutate shared state here.
         4. Clears _paused on exit, resuming normal capture.
 
@@ -85,8 +86,8 @@ class CameraService:
                 score_service.reload(settings)
         """
         self._paused.set()
-        # Acquire and immediately release the lock to wait for any active callback
-        with self._lock:
+        # Acquire and immediately release the lock to wait for any active callback.
+        with self._processing_lock:
             pass
         try:
             yield
@@ -111,13 +112,14 @@ class CameraService:
 
                 latest_score = 0.0
                 pose_results = None
-                # process_frame is already infallible (returns (frame, 0.0, None) on error)
-                if self._callback:
-                    processed = self._callback(frame)
-                    if isinstance(processed, tuple) and len(processed) == 3:
-                        frame, latest_score, pose_results = processed
+                with self._processing_lock:
+                    # process_frame is already infallible (returns (frame, 0.0, None) on error)
+                    if self._callback:
+                        processed = self._callback(frame)
+                        if isinstance(processed, tuple) and len(processed) == 3:
+                            frame, latest_score, pose_results = processed
 
-                with self._lock:
+                with self._settings_lock:
                     self._latest_frame = frame
                     self._latest_score = latest_score
                     self._latest_pose_results = pose_results
@@ -139,9 +141,9 @@ class CameraService:
                 time.sleep(self._frame_time - processing_time)
 
     def get_latest_frame(self):
-        with self._lock:
+        with self._settings_lock:
             return self._latest_frame, self._latest_score
 
     def get_latest_pose_results(self):
-        with self._lock:
+        with self._settings_lock:
             return self._latest_pose_results

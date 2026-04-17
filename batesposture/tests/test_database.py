@@ -1,3 +1,4 @@
+from pathlib import Path
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -50,3 +51,10 @@ def test_save_pose_data(mock_datetime, db_manager):
     assert first_landmark[3] == 2.0  # y
     assert first_landmark[4] == 3.0  # z
     assert first_landmark[5] == 0.9  # visibility
+
+
+def test_default_db_path_uses_user_app_data_dir(tmp_path):
+    settings = SettingsService.for_testing(tmp_path / "path_settings.ini")
+    db_path = Path(settings.resources.default_db_name)
+    assert db_path.name == "posture_data.db"
+    assert db_path.parent.name == "BatesPosture"

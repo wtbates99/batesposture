@@ -411,7 +411,7 @@ class SettingsDialog(QDialog):
         for key, value in self.ml_settings.posture_thresholds.items():
             spinbox = QDoubleSpinBox()
             spinbox.setDecimals(2)
-            spinbox.setRange(0.0, 180.0)
+            spinbox.setRange(0.01, 180.0)
             spinbox.setSingleStep(0.5)
             spinbox.setValue(float(value))
             label = key.replace("_", " ").title()
@@ -430,6 +430,8 @@ class SettingsDialog(QDialog):
             spinbox.setValue(float(weight))
             weights_form.addRow(f"Weight {index}:", spinbox)
             self.weight_spinboxes.append(spinbox)
+        self.weights_error_label = self._error_label()
+        weights_form.addRow("", self.weights_error_label)
         weights_group.setLayout(weights_form)
 
         layout.addWidget(core_group)
@@ -572,9 +574,22 @@ class SettingsDialog(QDialog):
     def _validate_all(self) -> Optional[Dict[str, int]]:
         message_valid = self._validate_posture_message()
         intervals = self._validate_tracking_intervals()
-        if not message_valid or intervals is None:
+        weights_valid = self._validate_posture_weights()
+        if not message_valid or intervals is None or not weights_valid:
             return None
         return intervals
+
+    def _validate_posture_weights(self) -> bool:
+        total = sum(spinbox.value() for spinbox in self.weight_spinboxes)
+        if total <= 0:
+            self._show_error(
+                "posture_weights",
+                self.weights_error_label,
+                "At least one posture weight must be greater than zero.",
+            )
+            return False
+        self._clear_error("posture_weights", self.weights_error_label)
+        return True
 
     def accept(self) -> None:
         intervals = self._validate_all()

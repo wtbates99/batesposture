@@ -506,18 +506,8 @@ class PostureTrackerTray(QSystemTrayIcon):
         db_interval_seconds = self._settings.runtime.db_write_interval_seconds
 
         should_save = (
-            self.tracking_interval > 0
-            and self.last_tracking_time
-            and self.last_db_save is None
-            and (current_time - self.last_tracking_time).total_seconds()
-            <= db_interval_seconds
-        ) or (
-            self.tracking_interval == 0
-            and (
-                self.last_db_save is None
-                or (current_time - self.last_db_save).total_seconds()
-                >= db_interval_seconds
-            )
+            self.last_db_save is None
+            or (current_time - self.last_db_save).total_seconds() >= db_interval_seconds
         )
 
         if not should_save or not results_bundle:
@@ -557,15 +547,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._settings.update_runtime(enable_database_logging=checked)
         self._settings.save_all()
         self._set_logging_label(checked)
-        self.export_action.setEnabled(checked)
-        if checked and self._database is None:
-            self._database = Database(
-                self._settings.resources.default_db_name,
-                self._settings.get_posture_landmarks(),
-            )
-        elif not checked and self._database:
-            self._database.close()
-            self._database = None
+        self._sync_database_logging_state()
 
     def _toggle_focus_mode(self, checked: bool) -> None:
         self._settings.update_runtime(focus_mode_enabled=checked)
@@ -597,7 +579,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.logging_toggle_action.setChecked(runtime.enable_database_logging)
         self._set_focus_label(runtime.focus_mode_enabled)
         self.focus_mode_action.setChecked(runtime.focus_mode_enabled)
-        self.export_action.setEnabled(runtime.enable_database_logging)
+        self._sync_database_logging_state()
 
         menu = self.contextMenu()
         if menu:
@@ -609,7 +591,23 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         with self._camera_service.pause_processing():
             self._camera_service.reload_settings()
+            self._detector.reload()
             self._scores.reload(self._settings)
+
+    def _sync_database_logging_state(self) -> None:
+        enabled = self._settings.runtime.enable_database_logging
+        self.export_action.setEnabled(enabled)
+        if enabled:
+            if self._database is None:
+                self._database = Database(
+                    self._settings.resources.default_db_name,
+                    self._settings.get_posture_landmarks(),
+                )
+            self.last_db_save = None
+            return
+        if self._database:
+            self._database.close()
+            self._database = None
 
     # ------------------------
     # Shutdown
