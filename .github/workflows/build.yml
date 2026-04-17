@@ -32,10 +32,21 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libglib2.0-0 \
+            libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xfixes0 libxkbcommon-x11-0 libegl1
+
       - name: Install dependencies
         run: uv sync --all-groups
 
       - name: pytest
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: uv run python -m pytest
 
   # ── build the sdist + wheel ────────────────────────────────────────────────
@@ -95,8 +106,10 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "tag=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "package_version=${{ github.event.inputs.version }}" | sed 's/^package_version=v/package_version=/' >> "$GITHUB_OUTPUT"
           else
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "package_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create GitHub Release
@@ -111,7 +124,7 @@ jobs:
             ## Install
 
             ```bash
-            pip install batesposture==${{ steps.version.outputs.tag }}
+            pip install batesposture==${{ steps.version.outputs.package_version }}
             ```
 
             Then run:

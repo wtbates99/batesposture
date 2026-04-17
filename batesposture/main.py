@@ -4,9 +4,11 @@ import os
 import sys
 
 import psutil
+from PyQt6.QtCore import QLockFile
 from PyQt6.QtWidgets import QApplication
 
 from .application import ApplicationFacade
+from .services.settings_service import get_app_data_dir
 
 _LOG_FORMAT = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
 _LOG_DATE_FMT = "%H:%M:%S"
@@ -40,51 +42,73 @@ except OSError as _e:
 logger = logging.getLogger(__name__)
 
 
-def _kill_existing_instance(lock_file: str) -> None:
-    """Terminate a previous instance whose PID is stored in *lock_file*."""
+def _process_looks_like_batesposture(pid: int) -> bool:
     try:
-        with open(lock_file) as f:
-            old_pid = int(f.read().strip())
-        try:
-            process = psutil.Process(old_pid)
-            if "python" in process.name().lower():
-                process.terminate()
-                process.wait(timeout=3)
-                logger.info("Terminated previous instance (PID %d)", old_pid)
-        except psutil.NoSuchProcess:
-            pass
-        except psutil.TimeoutExpired:
-            logger.warning(
-                "Previous instance (PID %d) did not exit within 3 seconds; "
-                "proceeding anyway — camera access may conflict.",
-                old_pid,
-            )
-    except (FileNotFoundError, ValueError):
-        pass
+        process = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return False
 
-    if os.path.exists(lock_file):
-        os.remove(lock_file)
+    try:
+        cmdline = " ".join(process.cmdline()).lower()
+    except (psutil.AccessDenied, psutil.ZombieProcess):
+        cmdline = ""
+    if "batesposture" in cmdline:
+        return True
+
+    try:
+        name = process.name().lower()
+    except (psutil.AccessDenied, psutil.ZombieProcess):
+        name = ""
+    return "batesposture" in name
+
+
+def _acquire_single_instance_lock(lock_file: str) -> QLockFile | None:
+    """Acquire the app lock without terminating unrelated processes."""
+    lock = QLockFile(lock_file)
+    # Long-running GUI app: never treat an active lock as stale based on age alone.
+    lock.setStaleLockTime(0)
+    if lock.tryLock():
+        return lock
+
+    has_info, pid, hostname, appname = lock.getLockInfo()
+    if pid is not None and not _process_looks_like_batesposture(pid):
+        logger.warning(
+            "Removing stale lock file for PID %s (host=%s, app=%s)",
+            pid,
+            hostname or "unknown",
+            appname or "unknown",
+        )
+        if lock.removeStaleLockFile() and lock.tryLock():
+            return lock
+
+    logger.info("Another BatesPosture instance is already running")
+    if has_info:
+        logger.info(
+            "Active lock details: pid=%s host=%s app=%s",
+            pid,
+            hostname or "unknown",
+            appname or "unknown",
+        )
+    return None
 
 
 def main() -> None:
     app = QApplication(sys.argv)
+    app.setApplicationName("BatesPosture")
 
-    lock_file = os.path.join(os.path.expanduser("~"), ".posture_tracker.lock")
-
-    if os.path.exists(lock_file):
-        _kill_existing_instance(lock_file)
+    lock_file = os.path.join(get_app_data_dir(), "batesposture.lock")
+    lock = _acquire_single_instance_lock(lock_file)
+    if lock is None:
+        sys.exit(0)
 
     try:
-        with open(lock_file, "w") as f:
-            f.write(str(os.getpid()))
-
         app.setQuitOnLastWindowClosed(False)
         facade = ApplicationFacade(app)
         exit_code = facade.run()
 
     finally:
-        if os.path.exists(lock_file):
-            os.remove(lock_file)
+        if lock.isLocked():
+            lock.unlock()
 
     sys.exit(exit_code)
 

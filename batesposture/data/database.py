@@ -29,6 +29,8 @@ class Database:
     """
 
     def __init__(self, db_path: str, landmark_names: Iterable[str]) -> None:
+        if db_path != ":memory:":
+            os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         self._conn = sqlite3.connect(db_path)
         self._conn.execute("PRAGMA journal_mode=WAL")  # faster concurrent writes
         self._cursor = self._conn.cursor()

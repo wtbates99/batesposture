@@ -23,7 +23,7 @@ from typing import (
 )
 
 import mediapipe as mp
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import QSettings, QStandardPaths
 
 
 SETTINGS_SCHEMA_VERSION = "1.1.0"
@@ -77,6 +77,34 @@ def get_resource_path(relative_path: str) -> str:
     return str(Path.cwd() / relative)
 
 
+def get_app_data_dir() -> Path:
+    """Return the per-user writable data directory for BatesPosture."""
+    base_dir = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.AppDataLocation
+    ) or QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.AppLocalDataLocation
+    )
+    if base_dir:
+        app_dir = Path(base_dir)
+    elif sys.platform == "darwin":
+        app_dir = Path.home() / "Library" / "Application Support"
+    elif os.name == "nt":
+        app_dir = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    else:
+        app_dir = Path(
+            os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
+        )
+
+    if app_dir.name != SETTINGS_ORGANIZATION:
+        app_dir = app_dir / SETTINGS_ORGANIZATION
+    try:
+        app_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        app_dir = Path(tempfile.gettempdir()) / SETTINGS_ORGANIZATION
+        app_dir.mkdir(parents=True, exist_ok=True)
+    return app_dir
+
+
 def _default_tracking_intervals() -> Dict[str, int]:
     # "Continuous (always on)" maps to 0 (special value meaning no scheduled stop).
     # Placed last so periodic options appear first and are the obvious choices.
@@ -109,9 +137,7 @@ class ResourceSettings:
         default_factory=lambda: get_resource_path("batesposture/static/icon.png")
     )
     default_db_name: str = field(
-        default_factory=lambda: os.path.join(
-            os.path.dirname(__file__), "../posture_data.db"
-        )
+        default_factory=lambda: str(get_app_data_dir() / "posture_data.db")
     )
 
 
@@ -344,15 +370,15 @@ class SettingsStore:
             self.runtime.tracking_intervals = intervals
             runtime_changed = True
 
-        thresholds = self._coerce_threshold_mapping(self.ml.posture_thresholds)
-        if not thresholds:
-            thresholds = _default_posture_thresholds()
+        thresholds = self._merge_threshold_defaults(
+            self._coerce_threshold_mapping(self.ml.posture_thresholds)
+        )
         if thresholds != self.ml.posture_thresholds:
             self.ml.posture_thresholds = thresholds
             ml_changed = True
 
         weights = self._coerce_weight_list(self.ml.posture_weights)
-        if not weights:
+        if not self._is_valid_weight_list(weights):
             weights = _default_posture_weights()
         if weights != self.ml.posture_weights:
             self.ml.posture_weights = weights
@@ -464,6 +490,14 @@ class SettingsStore:
         return {}
 
     @staticmethod
+    def _merge_threshold_defaults(raw: Mapping[str, float]) -> Dict[str, float]:
+        merged = _default_posture_thresholds()
+        for key, value in raw.items():
+            if key in merged and value > 0:
+                merged[key] = value
+        return merged
+
+    @staticmethod
     def _coerce_weight_list(raw: Any) -> List[float]:
         if isinstance(raw, str):
             raw = SettingsStore._loads_flexible(raw)
@@ -477,6 +511,15 @@ class SettingsStore:
         if isinstance(raw, (int, float)):
             return [float(raw)]
         return []
+
+    @staticmethod
+    def _is_valid_weight_list(raw: Iterable[float]) -> bool:
+        weights = list(raw)
+        return (
+            len(weights) == len(DEFAULT_POSTURE_WEIGHTS)
+            and all(weight >= 0 for weight in weights)
+            and sum(weights) > 0
+        )
 
     @staticmethod
     def _coerce_float(value: Any) -> Optional[float]:

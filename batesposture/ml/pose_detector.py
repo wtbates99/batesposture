@@ -10,7 +10,11 @@ import time
 import mediapipe as mp
 import numpy as np
 
-from ..services.settings_service import POOR_POSTURE_THRESHOLD_DEFAULT, SettingsService
+from ..services.settings_service import (
+    DEFAULT_POSTURE_WEIGHTS,
+    SettingsService,
+    _default_posture_thresholds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,34 +43,19 @@ class PoseDetector:
 
     def __init__(self, settings: SettingsService) -> None:
         self._settings = settings
-        runtime = settings.runtime
-        ml_settings = settings.ml
-
-        self.frame_width = runtime.frame_width
-        self.frame_height = runtime.frame_height
         self.mp_pose = mp.solutions.pose
         self.mp_draw = mp.solutions.drawing_utils
-        model_complexity = ml_settings.model_complexity
-        if ml_settings.enable_gpu:
-            # Force highest-complexity model when GPU is requested; MediaPipe Python
-            # bindings don't expose an explicit GPU flag — complexity=2 is the model
-            # most likely to benefit from hardware acceleration.
-            model_complexity = 2
-            logger.info("GPU mode enabled: using model_complexity=2")
-        self.pose = self.mp_pose.Pose(
-            min_detection_confidence=ml_settings.min_detection_confidence,
-            min_tracking_confidence=ml_settings.min_tracking_confidence,
-            model_complexity=model_complexity,
-        )
         self.posture_landmarks = settings.get_posture_landmarks()
         self.ideal_neck_vector = np.array([0, -1, 0])
         self.ideal_spine_vector = np.array([0, -1, 0])
-        self.weights = self._normalize_weights(ml_settings.posture_weights)
-        self.score_thresholds = self._normalize_thresholds(
-            ml_settings.posture_thresholds
-        )
+        self.frame_width = 0
+        self.frame_height = 0
+        self.weights = np.array([], dtype=float)
+        self.score_thresholds: Dict[str, float] = {}
+        self.pose = None
         # Cached CLAHE object — creating one per frame is expensive at 30 FPS
         self._clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        self.reload()
         # Pre-warm MediaPipe so the first real frame isn't delayed by model init.
         # Use a noise frame (not zeros) so MediaPipe does real work — better proxy
         # for actual inference cost on this hardware.
@@ -82,6 +71,36 @@ class PoseDetector:
             )
         except Exception:  # noqa: BLE001
             pass
+
+    def _create_pose(self):
+        ml_settings = self._settings.ml
+        model_complexity = ml_settings.model_complexity
+        if ml_settings.enable_gpu:
+            # Force highest-complexity model when GPU is requested; MediaPipe Python
+            # bindings don't expose an explicit GPU flag — complexity=2 is the model
+            # most likely to benefit from hardware acceleration.
+            model_complexity = 2
+            logger.info("GPU mode enabled: using model_complexity=2")
+        return self.mp_pose.Pose(
+            min_detection_confidence=ml_settings.min_detection_confidence,
+            min_tracking_confidence=ml_settings.min_tracking_confidence,
+            model_complexity=model_complexity,
+        )
+
+    def reload(self) -> None:
+        """Reload detector and scoring settings without restarting the app."""
+        runtime = self._settings.runtime
+        self.frame_width = runtime.frame_width
+        self.frame_height = runtime.frame_height
+        self.weights = self._normalize_weights(self._settings.ml.posture_weights)
+        self.score_thresholds = self._normalize_thresholds(
+            self._settings.ml.posture_thresholds
+        )
+
+        old_pose = getattr(self, "pose", None)
+        self.pose = self._create_pose()
+        if old_pose is not None and hasattr(old_pose, "close"):
+            old_pose.close()
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, Any]:
         try:
@@ -257,6 +276,7 @@ class PoseDetector:
         return self._compute_posture_metrics(landmarks)["posture_score"]
 
     def _draw_posture_feedback(self, frame: np.ndarray, score: float) -> None:
+        runtime = self._settings.runtime
         score_color = (
             0,
             int(min(255, score * 2.55)),
@@ -271,10 +291,10 @@ class PoseDetector:
             score_color,
             2,
         )
-        if score < POOR_POSTURE_THRESHOLD_DEFAULT:
+        if score < runtime.poor_posture_threshold:
             cv2.putText(
                 frame,
-                "Please sit up straight!",
+                runtime.default_posture_message,
                 (10, 60),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
@@ -293,7 +313,16 @@ class PoseDetector:
         if not isinstance(weights, (list, tuple)):
             raise ValueError("Posture weights must be a list of numbers")
         coerced = [float(value) for value in weights]
-        return np.array(coerced, dtype=float)
+        if len(coerced) != len(DEFAULT_POSTURE_WEIGHTS):
+            raise ValueError(
+                f"Expected {len(DEFAULT_POSTURE_WEIGHTS)} posture weights, got {len(coerced)}"
+            )
+        if any(value < 0 for value in coerced):
+            raise ValueError("Posture weights cannot be negative")
+        total = sum(coerced)
+        if total <= 0:
+            raise ValueError("Posture weights must sum to a positive value")
+        return np.array([value / total for value in coerced], dtype=float)
 
     @staticmethod
     def _normalize_thresholds(thresholds: Any) -> Dict[str, float]:
@@ -302,6 +331,14 @@ class PoseDetector:
                 thresholds = json.loads(thresholds)
             except json.JSONDecodeError as exc:
                 raise ValueError("Invalid posture thresholds configuration") from exc
+        normalized = _default_posture_thresholds()
         if hasattr(thresholds, "items"):
-            return {str(key): float(value) for key, value in thresholds.items()}
+            for key, value in thresholds.items():
+                if key not in normalized:
+                    continue
+                coerced = float(value)
+                if coerced <= 0:
+                    raise ValueError("Posture thresholds must be positive")
+                normalized[str(key)] = coerced
+            return normalized
         raise ValueError("Invalid posture thresholds configuration")

@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import cv2
 import numpy as np
 import pytest
@@ -174,6 +176,39 @@ class TestPoseDetector:
     def test_weights_sum(self, pd):
         """Test that weights sum to approximately 1"""
         assert abs(np.sum(pd.weights) - 1.0) < 1e-6
+
+    def test_weights_are_normalized_from_arbitrary_positive_values(
+        self, settings_service
+    ):
+        settings_service.update_ml(posture_weights=[2.0] * 7)
+        detector = PoseDetector(settings_service)
+        assert np.allclose(detector.weights, np.full(7, 1 / 7))
+
+    def test_overlay_uses_runtime_threshold_and_message(
+        self, pd, mock_frame, settings_service
+    ):
+        settings_service.update_runtime(
+            poor_posture_threshold=80,
+            default_posture_message="Straighten up",
+        )
+        pd.reload()
+        with patch("batesposture.ml.pose_detector.cv2.putText") as mock_put_text:
+            pd._draw_posture_feedback(mock_frame, 75.0)
+        texts = [call.args[1] for call in mock_put_text.call_args_list]
+        assert "Straighten up" in texts
+
+    def test_overlay_skips_alert_text_above_runtime_threshold(
+        self, pd, mock_frame, settings_service
+    ):
+        settings_service.update_runtime(
+            poor_posture_threshold=60,
+            default_posture_message="Straighten up",
+        )
+        pd.reload()
+        with patch("batesposture.ml.pose_detector.cv2.putText") as mock_put_text:
+            pd._draw_posture_feedback(mock_frame, 75.0)
+        texts = [call.args[1] for call in mock_put_text.call_args_list]
+        assert "Straighten up" not in texts
 
     @pytest.mark.parametrize(
         "invalid_vector",
