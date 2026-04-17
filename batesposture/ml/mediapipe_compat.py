@@ -9,9 +9,9 @@ import mediapipe as mp
 def load_mediapipe_solutions(mp_module: Any | None = None) -> Any:
     """Return the legacy MediaPipe solutions namespace across package layouts.
 
-    Newer MediaPipe wheels still ship ``mediapipe.python.solutions`` but no longer
-    reliably re-export it as ``mediapipe.solutions``. Prefer the public attribute
-    when present, and otherwise fall back to the packaged legacy namespace.
+    Some MediaPipe wheels expose the legacy namespace as ``mediapipe.solutions``,
+    while older layouts package it under ``mediapipe.python.solutions``. Prefer
+    the public attribute when present, and otherwise fall back to the legacy path.
     """
 
     module = mp_module or mp

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "batesposture"
-version = "1.1.1"
+version = "1.1.2"
 description = "Discreet system-tray posture monitor powered by MediaPipe and OpenCV."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "mediapipe>=0.10.21",
+    "mediapipe==0.10.21",
     "numpy>=1.26.4",
     "opencv-python>=4.11.0.86",
     "plyer>=2.1.0",
