@@ -196,6 +196,23 @@ def test_mark_absent_idempotent_when_no_streak(score_service):
     assert score_service.current_streak_s == 0.0
 
 
+def test_pause_session_excludes_absence_from_duration(settings):
+    score_service = ScoreService(settings)
+    with patch(
+        "batesposture.services.score_service.monotonic",
+        side_effect=[0.0, 1.0, 6.0, 11.0, 12.0, 15.0],
+    ):
+        score_service.reset_session()
+        score_service.add_score(50.0)
+        score_service.pause_session()
+        paused_stats = score_service.session_stats()
+        score_service.resume_session()
+        resumed_stats = score_service.session_stats()
+
+    assert paused_stats["duration_s"] == pytest.approx(6.0)
+    assert resumed_stats["duration_s"] == pytest.approx(9.0)
+
+
 # ---------------------------------------------------------------------------
 # 6. Thread safety: concurrent add_score calls don't corrupt state
 # ---------------------------------------------------------------------------

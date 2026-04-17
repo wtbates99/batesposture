@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 # How long (minutes) of continuous tracking before suggesting a break
 _BREAK_REMINDER_MINUTES = BREAK_REMINDER_MINUTES
+_ABSENCE_PAUSE_DELAY = timedelta(seconds=2)
 
 
 class PostureTrackerTray(QSystemTrayIcon):
@@ -80,6 +81,8 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._continuous_tracking_start: Optional[datetime] = None
         self._break_reminder_sent = False
         self._last_icon_score: float = -1.0
+        self._tracking_paused_for_absence = False
+        self._absence_started_at: Optional[datetime] = None
 
         self._initialize_application()
         self._run_onboarding_if_needed()
@@ -323,6 +326,8 @@ class PostureTrackerTray(QSystemTrayIcon):
             return
         self._scores.reset_session()
         self.tracking_enabled = True
+        self._tracking_paused_for_absence = False
+        self._absence_started_at = None
         self._continuous_tracking_start = datetime.now()
         self._break_reminder_sent = False
         self.toggle_tracking_action.setText("Stop Tracking")
@@ -333,6 +338,8 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _stop_tracking(self) -> None:
         self._camera_service.stop()
         self.tracking_enabled = False
+        self._tracking_paused_for_absence = False
+        self._absence_started_at = None
         self._continuous_tracking_start = None
         self._last_icon_score = -1.0
         self.toggle_tracking_action.setText("Start Tracking")
@@ -393,12 +400,12 @@ class PostureTrackerTray(QSystemTrayIcon):
         results_bundle = self._camera_service.get_latest_pose_results()
 
         if not isinstance(results_bundle, PoseDetectionResult):
-            # No human in frame — pause streak, skip scoring/logging/notifications.
-            self._scores.mark_absent()
-            self.setToolTip("Away from desk")
-            if isinstance(self.video_window, PostureDashboard):
-                self.video_window.update_frame(frame)
+            self._handle_absent_human(frame)
             return
+
+        self._absence_started_at = None
+        if self._tracking_paused_for_absence:
+            self._resume_tracking_after_presence()
 
         self._scores.add_score(score)
         average_score, stats = self._scores.average_and_stats()
@@ -418,6 +425,41 @@ class PostureTrackerTray(QSystemTrayIcon):
         if isinstance(self.video_window, PostureDashboard):
             self.video_window.update_frame(frame)
             self.video_window.update_score(average_score, metrics, stats)
+
+    def _handle_absent_human(self, frame) -> None:
+        """Debounce missing-human frames before pausing the active session."""
+        self._scores.mark_absent()
+        now = datetime.now()
+        if self._absence_started_at is None:
+            self._absence_started_at = now
+        elif (
+            not self._tracking_paused_for_absence
+            and now - self._absence_started_at >= _ABSENCE_PAUSE_DELAY
+        ):
+            self._pause_tracking_for_absence()
+
+        if self._tracking_paused_for_absence:
+            self.setToolTip("Away from desk — tracking paused")
+            self.setIcon(QIcon(self.icon_path))
+
+        if isinstance(self.video_window, PostureDashboard):
+            self.video_window.update_frame(frame)
+
+    def _pause_tracking_for_absence(self) -> None:
+        if self._tracking_paused_for_absence:
+            return
+        self._tracking_paused_for_absence = True
+        self._scores.pause_session()
+        self._last_icon_score = -1.0
+        logger.info("Human no longer detected; paused tracking")
+
+    def _resume_tracking_after_presence(self) -> None:
+        self._tracking_paused_for_absence = False
+        self._scores.resume_session()
+        self._continuous_tracking_start = datetime.now()
+        self._break_reminder_sent = False
+        self.last_db_save = None
+        logger.info("Human detected again; resumed tracking")
 
     def _update_tooltip(self, average_score: float) -> None:
         grade = score_grade(average_score)
