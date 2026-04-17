@@ -37,7 +37,11 @@ def test_acquire_single_instance_lock_returns_lock_when_available(monkeypatch):
 def test_acquire_single_instance_lock_removes_stale_non_app_lock(monkeypatch):
     fake_lock = FakeLock([False, True])
     monkeypatch.setattr(main_module, "QLockFile", lambda path: fake_lock)
-    monkeypatch.setattr(main_module, "_process_looks_like_batesposture", lambda pid: False)
+    monkeypatch.setattr(
+        main_module,
+        "_process_looks_like_batesposture",
+        lambda pid: False,
+    )
 
     lock = main_module._acquire_single_instance_lock("/tmp/batesposture.lock")
 
@@ -48,7 +52,11 @@ def test_acquire_single_instance_lock_removes_stale_non_app_lock(monkeypatch):
 def test_acquire_single_instance_lock_preserves_active_app_lock(monkeypatch):
     fake_lock = FakeLock([False])
     monkeypatch.setattr(main_module, "QLockFile", lambda path: fake_lock)
-    monkeypatch.setattr(main_module, "_process_looks_like_batesposture", lambda pid: True)
+    monkeypatch.setattr(
+        main_module,
+        "_process_looks_like_batesposture",
+        lambda pid: True,
+    )
 
     lock = main_module._acquire_single_instance_lock("/tmp/batesposture.lock")
 

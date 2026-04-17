@@ -136,7 +136,9 @@ def test_refresh_after_settings_change_syncs_database_logging(
 
 def test_save_to_db_uses_elapsed_interval_for_scheduled_tracking():
     saved = []
-    fake_db = SimpleNamespace(save_pose_data=lambda pose, score: saved.append((pose, score)))
+    fake_db = SimpleNamespace(
+        save_pose_data=lambda pose, score: saved.append((pose, score))
+    )
     fake_tray = SimpleNamespace(
         _database=fake_db,
         _settings=SimpleNamespace(
@@ -148,8 +150,15 @@ def test_save_to_db_uses_elapsed_interval_for_scheduled_tracking():
     start = datetime(2026, 1, 1, 12, 0, 0)
 
     with pytest.MonkeyPatch.context() as monkeypatch:
+
         class FakeDateTime:
-            _values = iter((start, start + timedelta(seconds=120), start + timedelta(seconds=301)))
+            _values = iter(
+                (
+                    start,
+                    start + timedelta(seconds=120),
+                    start + timedelta(seconds=301),
+                )
+            )
 
             @classmethod
             def now(cls):
