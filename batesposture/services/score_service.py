@@ -28,6 +28,8 @@ class ScoreService:
         self._window_size = ml_settings.score_window_size
         self._threshold = ml_settings.score_threshold
         self._session_start: Optional[float] = None
+        self._paused_since: Optional[float] = None
+        self._paused_duration_s: float = 0.0
         # Streak: consecutive seconds the rolling average has been above threshold
         self._streak_start: Optional[float] = None
         self._best_streak_s: float = 0.0
@@ -72,6 +74,8 @@ class ScoreService:
         """Mark the start of a new tracking session and reset streaks."""
         with self._lock:
             self._session_start = monotonic()
+            self._paused_since = None
+            self._paused_duration_s = 0.0
             self._streak_start = None
             self._best_streak_s = 0.0
 
@@ -83,16 +87,31 @@ class ScoreService:
         Idempotent — safe to call every tick while the user is absent.
         """
         with self._lock:
-            if self._streak_start is not None:
-                elapsed = monotonic() - self._streak_start
-                if elapsed > self._best_streak_s:
-                    self._best_streak_s = elapsed
-                self._streak_start = None
+            self._end_streak_unsafe()
+
+    def pause_session(self) -> None:
+        """Pause session duration while the user is away from the desk."""
+        with self._lock:
+            if self._session_start is None or self._paused_since is not None:
+                return
+            self._end_streak_unsafe()
+            self._paused_since = monotonic()
+
+    def resume_session(self) -> None:
+        """Resume a paused session once the user returns to frame."""
+        with self._lock:
+            if self._session_start is None or self._paused_since is None:
+                return
+            self._paused_duration_s += monotonic() - self._paused_since
+            self._paused_since = None
 
     def add_score(self, score: float) -> None:
         with self._lock:
             if self._session_start is None:
                 self._session_start = monotonic()
+            if self._paused_since is not None:
+                self._paused_duration_s += monotonic() - self._paused_since
+                self._paused_since = None
             current_time = monotonic()
             self._timestamps[self._current_index] = current_time
             self._scores[self._current_index] = score
@@ -101,17 +120,30 @@ class ScoreService:
                 self._is_full = True
             self._update_streak_unsafe(score)
 
+    def _end_streak_unsafe(self) -> None:
+        if self._streak_start is None:
+            return
+        elapsed = monotonic() - self._streak_start
+        if elapsed > self._best_streak_s:
+            self._best_streak_s = elapsed
+        self._streak_start = None
+
     def _update_streak_unsafe(self, score: float) -> None:
         """Update streak state; must be called with self._lock held."""
         if score >= self._threshold:
             if self._streak_start is None:
                 self._streak_start = monotonic()
         else:
-            if self._streak_start is not None:
-                elapsed = monotonic() - self._streak_start
-                if elapsed > self._best_streak_s:
-                    self._best_streak_s = elapsed
-            self._streak_start = None
+            self._end_streak_unsafe()
+
+    def _session_duration_unsafe(self) -> float:
+        if self._session_start is None:
+            return 0.0
+        current_time = monotonic()
+        paused = self._paused_duration_s
+        if self._paused_since is not None:
+            paused += current_time - self._paused_since
+        return max(0.0, current_time - self._session_start - paused)
 
     def average(self, window_seconds: Optional[int] = None) -> float:
         with self._lock:
@@ -164,7 +196,7 @@ class ScoreService:
                     "best_streak_s": 0.0,
                     "current_streak_s": 0.0,
                 }
-            duration = monotonic() - self._session_start if self._session_start else 0.0
+            duration = self._session_duration_unsafe()
             best = max(self._best_streak_s, self._current_streak_s_unsafe())
             current = self._current_streak_s_unsafe()
             return avg, {
@@ -213,7 +245,7 @@ class ScoreService:
                     "current_streak_s": 0.0,
                 }
 
-            duration = monotonic() - self._session_start if self._session_start else 0.0
+            duration = self._session_duration_unsafe()
             best = max(self._best_streak_s, self._current_streak_s_unsafe())
             current = self._current_streak_s_unsafe()
             return {
