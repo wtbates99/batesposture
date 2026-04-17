@@ -22,8 +22,9 @@ from typing import (
     get_type_hints,
 )
 
-import mediapipe as mp
 from PyQt6.QtCore import QSettings, QStandardPaths
+
+from ..ml.mediapipe_compat import MP_SOLUTIONS
 
 
 SETTINGS_SCHEMA_VERSION = "1.1.0"
@@ -187,25 +188,25 @@ class UserProfileSettings:
 
 
 POSTURE_LANDMARKS = [
-    mp.solutions.pose.PoseLandmark.NOSE,
-    mp.solutions.pose.PoseLandmark.LEFT_EYE_INNER,
-    mp.solutions.pose.PoseLandmark.LEFT_EYE,
-    mp.solutions.pose.PoseLandmark.LEFT_EYE_OUTER,
-    mp.solutions.pose.PoseLandmark.RIGHT_EYE_INNER,
-    mp.solutions.pose.PoseLandmark.RIGHT_EYE,
-    mp.solutions.pose.PoseLandmark.RIGHT_EYE_OUTER,
-    mp.solutions.pose.PoseLandmark.LEFT_EAR,
-    mp.solutions.pose.PoseLandmark.RIGHT_EAR,
-    mp.solutions.pose.PoseLandmark.MOUTH_LEFT,
-    mp.solutions.pose.PoseLandmark.MOUTH_RIGHT,
-    mp.solutions.pose.PoseLandmark.LEFT_SHOULDER,
-    mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER,
-    mp.solutions.pose.PoseLandmark.LEFT_ELBOW,
-    mp.solutions.pose.PoseLandmark.RIGHT_ELBOW,
-    mp.solutions.pose.PoseLandmark.LEFT_WRIST,
-    mp.solutions.pose.PoseLandmark.RIGHT_WRIST,
-    mp.solutions.pose.PoseLandmark.LEFT_HIP,
-    mp.solutions.pose.PoseLandmark.RIGHT_HIP,
+    MP_SOLUTIONS.pose.PoseLandmark.NOSE,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EYE_INNER,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EYE,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EYE_OUTER,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EYE_INNER,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EYE,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EYE_OUTER,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EAR,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EAR,
+    MP_SOLUTIONS.pose.PoseLandmark.MOUTH_LEFT,
+    MP_SOLUTIONS.pose.PoseLandmark.MOUTH_RIGHT,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_SHOULDER,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_SHOULDER,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_ELBOW,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_ELBOW,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_WRIST,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_WRIST,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_HIP,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_HIP,
 ]
 
 
@@ -695,7 +696,7 @@ class SettingsService:
         self._store.save_ml()
         self._store.save_profile()
 
-    def get_posture_landmarks(self) -> List[mp.solutions.pose.PoseLandmark]:
+    def get_posture_landmarks(self) -> List[Any]:
         return POSTURE_LANDMARKS
 
     @classmethod

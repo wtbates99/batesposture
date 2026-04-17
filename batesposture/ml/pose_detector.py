@@ -7,9 +7,9 @@ from typing import Any, Dict, Tuple
 import cv2
 import json
 import time
-import mediapipe as mp
 import numpy as np
 
+from .mediapipe_compat import MP_SOLUTIONS
 from ..services.settings_service import (
     DEFAULT_POSTURE_WEIGHTS,
     SettingsService,
@@ -43,8 +43,8 @@ class PoseDetector:
 
     def __init__(self, settings: SettingsService) -> None:
         self._settings = settings
-        self.mp_pose = mp.solutions.pose
-        self.mp_draw = mp.solutions.drawing_utils
+        self.mp_pose = MP_SOLUTIONS.pose
+        self.mp_draw = MP_SOLUTIONS.drawing_utils
         self.posture_landmarks = settings.get_posture_landmarks()
         self.ideal_neck_vector = np.array([0, -1, 0])
         self.ideal_spine_vector = np.array([0, -1, 0])
