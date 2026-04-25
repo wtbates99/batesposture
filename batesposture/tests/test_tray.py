@@ -112,6 +112,9 @@ class DummyNotificationService:
     def maybe_notify_posture(self, posture_score: float) -> None:
         return None
 
+    def maybe_notify_trend(self, score_service) -> None:
+        return None
+
 
 @pytest.fixture(scope="session")
 def qapp():

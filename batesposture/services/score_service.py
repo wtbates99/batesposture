@@ -164,6 +164,40 @@ class ScoreService:
             ]
         return float(np.mean(valid_scores)) if len(valid_scores) else 0.0
 
+    def recent_decline(
+        self,
+        recent_s: int = 60,
+        baseline_s: int = 60,
+        baseline_offset_s: int = 240,
+    ) -> Optional[float]:
+        """Return points dropped between a baseline window and the most recent window.
+
+        Compares the mean score over the last ``recent_s`` seconds against the
+        mean over a window of ``baseline_s`` seconds ending ``baseline_offset_s``
+        seconds ago. A positive return value means posture has declined.
+
+        Returns ``None`` when either window has no samples (e.g., session is
+        younger than the baseline offset).
+        """
+        with self._lock:
+            if not self._is_full and self._current_index == 0:
+                return None
+            now = monotonic()
+            if self._is_full:
+                ts = self._timestamps
+                sc = self._scores
+            else:
+                ts = self._timestamps[: self._current_index]
+                sc = self._scores[: self._current_index]
+            age = now - ts
+            recent_mask = (age >= 0) & (age <= recent_s)
+            baseline_mask = (age > baseline_offset_s) & (
+                age <= baseline_offset_s + baseline_s
+            )
+            if not recent_mask.any() or not baseline_mask.any():
+                return None
+            return float(np.mean(sc[baseline_mask]) - np.mean(sc[recent_mask]))
+
     def average_and_stats(self) -> tuple:
         """Return (rolling_average, session_stats_dict) in a single lock acquisition."""
         with self._lock:

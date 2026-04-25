@@ -15,10 +15,13 @@ class NotificationService:
     repeated alerts during sustained poor posture.
     """
 
+    TREND_DROP_POINTS: float = 12.0
+
     def __init__(self, settings: SettingsService, icon_path: str) -> None:
         self._settings = settings
         self._icon_path = icon_path
         self._last_notification_time: float = 0.0
+        self._last_trend_notification_time: float = 0.0
 
     def notify_interval_change(self, message: str) -> None:
         runtime = self._settings.runtime
@@ -41,3 +44,28 @@ class NotificationService:
                     self._icon_path,
                 )
                 self._last_notification_time = current_time
+
+    def maybe_notify_trend(self, score_service) -> None:
+        """Nudge the user when rolling posture has declined meaningfully.
+
+        Catches gradual slumps that never cross the absolute threshold. Uses an
+        independent cooldown from the threshold alert so the two don't interfere.
+        """
+        runtime = self._settings.runtime
+        if not runtime.notifications_enabled or runtime.focus_mode_enabled:
+            return
+        decline = score_service.recent_decline()
+        if decline is None or decline < self.TREND_DROP_POINTS:
+            return
+        current_time = monotonic()
+        if (
+            current_time - self._last_trend_notification_time
+            <= runtime.notification_cooldown
+        ):
+            return
+        send_notification(
+            f"Your posture has slipped {decline:.0f} points — time to reset.",
+            "Posture Trending Down",
+            self._icon_path,
+        )
+        self._last_trend_notification_time = current_time

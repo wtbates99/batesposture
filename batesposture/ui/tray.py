@@ -419,6 +419,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             self._save_to_db(average_score, results_bundle)
 
         self._notifications.maybe_notify_posture(average_score)
+        self._notifications.maybe_notify_trend(self._scores)
         self._maybe_send_break_reminder()
         self._update_tooltip(average_score)
 
