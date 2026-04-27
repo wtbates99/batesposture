@@ -42,9 +42,10 @@ def test_average_reflects_recent_scores(service):
 
 
 def test_session_stats_min_max_count(service):
-    for s in [50.0, 70.0, 90.0]:
-        service.add_score(s)
-    stats = service.session_stats()
+    with patch("batesposture.services.score_service.monotonic", return_value=1001.0):
+        for s in [50.0, 70.0, 90.0]:
+            service.add_score(s)
+        stats = service.session_stats()
     assert stats["count"] == 3
     assert stats["min"] == 50.0
     assert stats["max"] == 90.0
