@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BatesPosture — Real-time posture monitoring for your desktop</title>
   <meta name="description"
-    content="Free, open-source posture monitor that uses your webcam and MediaPipe to score your posture in real time. Runs entirely on your machine. Install in seconds with pip — no binaries, no sign-in, no tracking." />
+    content="Free, open-source posture monitor that uses your webcam and MediaPipe to score your posture in real time. Runs entirely on your machine. Clone the repo and run from source." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23060806'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='11' fill='%23c9a84c'>bp</text></svg>" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -49,7 +49,6 @@
 
     a { color: inherit; text-decoration: none; }
 
-    /* ── nav ──────────────────────────────────────────────────────── */
     nav {
       position: sticky; top: 0; z-index: 100;
       background: rgba(6,8,6,0.92);
@@ -73,10 +72,8 @@
     }
     .nav-links a:hover { color: var(--gold); }
 
-    /* ── container ────────────────────────────────────────────────── */
     .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
 
-    /* ── hero ─────────────────────────────────────────────────────── */
     .hero {
       padding: 88px 24px 64px;
       text-align: center;
@@ -128,8 +125,7 @@
     }
     .btn-primary:hover { background: rgba(224,120,48,0.15); color: var(--accent); }
 
-    /* ── pip snippet ──────────────────────────────────────────────── */
-    .pip-snippet {
+    .clone-snippet {
       display: inline-flex; align-items: center; gap: 12px;
       background: var(--bg-card);
       border: 1px solid var(--border-h);
@@ -138,23 +134,16 @@
       font-size: .85rem;
       color: var(--text-dim);
       margin: 16px auto 0;
+      max-width: 100%;
     }
-    .pip-snippet .cmd { color: var(--gold); }
-    .pip-copy {
+    .clone-snippet .cmd { color: var(--gold); }
+    .clone-copy {
       background: none; border: none; cursor: pointer;
       color: var(--text-muted); padding: 0; line-height: 1;
       transition: color .15s;
     }
-    .pip-copy:hover { color: var(--gold); }
+    .clone-copy:hover { color: var(--gold); }
 
-    .version-tag {
-      font-size: .72rem; color: var(--text-muted);
-      margin-top: 10px; letter-spacing: .03em;
-    }
-    .version-tag a { color: var(--gold); }
-    .version-tag a:hover { text-decoration: underline; }
-
-    /* ── score pills ──────────────────────────────────────────────── */
     .score-demo {
       display: flex; justify-content: center; gap: 16px;
       flex-wrap: wrap; margin-top: 40px;
@@ -170,7 +159,6 @@
     .dot-amber  { background: #c9a84c; }
     .dot-green  { background: #4d8a5e; }
 
-    /* ── sections ─────────────────────────────────────────────────── */
     section { padding: 64px 24px; border-bottom: 1px solid var(--border); }
     section:last-of-type { border-bottom: none; }
 
@@ -189,7 +177,6 @@
       max-width: 540px; margin-bottom: 40px;
     }
 
-    /* ── features grid ────────────────────────────────────────────── */
     .features-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -208,7 +195,6 @@
     .feature-card h3 { font-size: .88rem; font-weight: 600; color: var(--text); margin-bottom: 6px; }
     .feature-card p  { font-size: .8rem; color: var(--text-dim); line-height: 1.6; }
 
-    /* ── steps ────────────────────────────────────────────────────── */
     .steps { display: flex; flex-direction: column; gap: 20px; max-width: 600px; }
     .step { display: flex; gap: 16px; align-items: flex-start; }
     .step-num {
@@ -220,7 +206,6 @@
     .step-body h3 { font-size: .88rem; font-weight: 600; color: var(--text); margin-bottom: 4px; }
     .step-body p  { font-size: .82rem; color: var(--text-dim); }
 
-    /* ── platform grid ────────────────────────────────────────────── */
     .platform-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -234,25 +219,6 @@
     .platform-card ul { list-style: none; font-size: .78rem; color: var(--text-dim); }
     .platform-card ul li { padding: 3px 0; }
     .platform-card ul li::before { content: "> "; color: var(--accent); }
-
-    /* ── install tabs ─────────────────────────────────────────────── */
-    .install-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
-    .tab-btn {
-      padding: 6px 14px;
-      border: 1px solid var(--border-h);
-      border-radius: var(--r);
-      background: var(--bg-card);
-      color: var(--text-dim);
-      font-family: var(--mono);
-      font-size: .78rem; font-weight: 500; letter-spacing: .03em;
-      text-transform: uppercase; cursor: pointer;
-      transition: border-color .15s, color .15s;
-    }
-    .tab-btn.active, .tab-btn:hover {
-      border-color: var(--accent); color: var(--accent);
-    }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
 
     .install-steps { list-style: none; }
     .install-steps li {
@@ -277,7 +243,6 @@
     .install-steps a { color: var(--gold); }
     .install-steps a:hover { text-decoration: underline; }
 
-    /* ── privacy box ──────────────────────────────────────────────── */
     .privacy-box {
       background: var(--forest-dim); border: 1px solid rgba(77,138,94,0.20);
       border-radius: var(--r); padding: 24px 28px;
@@ -290,7 +255,6 @@
       text-transform: uppercase; color: var(--forest); margin-bottom: 10px;
     }
 
-    /* ── footer ───────────────────────────────────────────────────── */
     footer {
       border-top: 1px solid var(--border);
       padding: 28px 24px;
@@ -301,7 +265,6 @@
     footer a:hover { text-decoration: underline; }
     footer .sep { margin: 0 8px; color: var(--text-muted); }
 
-    /* ── responsive ───────────────────────────────────────────────── */
     @media (max-width: 600px) {
       .hero { padding: 56px 16px 40px; }
       .score-demo { gap: 8px; }
@@ -310,45 +273,39 @@
 </head>
 <body>
 
-<!-- nav -->
 <nav>
   <div class="inner">
     <span class="nav-logo">batesposture<span>_</span></span>
     <ul class="nav-links">
       <li><a href="#features">features</a></li>
-      <li><a href="#install">install</a></li>
+      <li><a href="#run">run</a></li>
       <li><a href="#privacy">privacy</a></li>
       <li><a href="https://github.com/wtbates99/batesposture" target="_blank" rel="noopener">github</a></li>
     </ul>
   </div>
 </nav>
 
-<!-- hero -->
 <section class="hero">
-  <p class="hero-pre">free &amp; open source / <span>pip install batesposture</span></p>
+  <p class="hero-pre">free &amp; open source / <span>clone &amp; run from source</span></p>
   <h1>Real-time <em>posture</em><br>monitoring for your desktop</h1>
   <p>
     BatesPosture uses your webcam and MediaPipe to score your posture
     every second — entirely on your machine. No cloud, no subscriptions,
-    no tracking. Install in seconds with pip.
+    no tracking. Clone the repo and run it.
   </p>
 
   <div class="hero-actions">
-    <a class="btn btn-primary" href="#install">install with pip</a>
+    <a class="btn btn-primary" href="#run">how to run</a>
     <a class="btn" href="https://github.com/wtbates99/batesposture" target="_blank" rel="noopener">view on github</a>
   </div>
 
-  <div class="pip-snippet">
-    <span><span class="cmd">pip install</span> batesposture &nbsp;&amp;&amp;&nbsp; <span class="cmd">batesposture</span></span>
-    <button class="pip-copy" title="Copy" onclick="navigator.clipboard.writeText('pip install batesposture && batesposture')">
+  <div class="clone-snippet">
+    <span><span class="cmd">git clone</span> https://github.com/wtbates99/batesposture.git</span>
+    <button class="clone-copy" title="Copy" onclick="navigator.clipboard.writeText('git clone https://github.com/wtbates99/batesposture.git')">
       <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
         <path d="M8 2a2 2 0 00-2 2v1H5a2 2 0 00-2 2v9a2 2 0 002 2h8a2 2 0 002-2v-1h1a2 2 0 002-2V6a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H8zm0 2h4v1H8V4zM5 7h10v9H5V7z"/>
       </svg>
     </button>
-  </div>
-
-  <div class="version-tag">
-    latest: <a id="latest-version" href="https://github.com/wtbates99/batesposture/releases/latest" target="_blank" rel="noopener">checking...</a>
   </div>
 
   <div class="score-demo">
@@ -358,7 +315,6 @@
   </div>
 </section>
 
-<!-- features -->
 <section id="features">
   <div class="container">
     <div class="section-label">features</div>
@@ -400,7 +356,6 @@
   </div>
 </section>
 
-<!-- how it works -->
 <section id="how">
   <div class="container">
     <div class="section-label">how it works</div>
@@ -440,39 +395,22 @@
   </div>
 </section>
 
-<!-- install -->
-<section id="install">
+<section id="run">
   <div class="container">
-    <div class="section-label">install</div>
-    <h2>Get started in seconds</h2>
-    <p class="section-sub">Distributed via PyPI — no unsigned binaries, no SmartScreen warnings. Requires Python 3.10+ and pip.</p>
+    <div class="section-label">run from source</div>
+    <h2>Clone the repo, run with uv</h2>
+    <p class="section-sub">No binaries, no installers. Requires Python 3.10+ and <a href="https://github.com/astral-sh/uv" target="_blank" rel="noopener" style="color:var(--gold)">uv</a>.</p>
 
-    <div class="install-tabs">
-      <button class="tab-btn active" onclick="showTab('pip')">pip (recommended)</button>
-      <button class="tab-btn" onclick="showTab('source')">from source</button>
-    </div>
-
-    <div id="tab-pip" class="tab-content active">
-      <ol class="install-steps">
-        <li><span class="step-n">1</span><span>Install: <code>pip install batesposture</code></span></li>
-        <li><span class="step-n">2</span><span>Run: <code>batesposture</code></span></li>
-        <li><span class="step-n">3</span><span>Grant <strong>camera permission</strong> when prompted.</span></li>
-        <li><span class="step-n">4</span><span>BatesPosture appears in your system tray. Complete the 6-second calibration on first launch.</span></li>
-        <li><span class="step-n">5</span><span><strong>Linux / GNOME:</strong> may need the <a href="https://extensions.gnome.org/extension/615/appindicator-support/" target="_blank" rel="noopener">AppIndicator extension</a> for tray support.</span></li>
-      </ol>
-    </div>
-
-    <div id="tab-source" class="tab-content">
-      <ol class="install-steps">
-        <li><span class="step-n">1</span><span>Clone: <code>git clone https://github.com/wtbates99/batesposture.git &amp;&amp; cd batesposture</code></span></li>
-        <li><span class="step-n">2</span><span>Install <a href="https://github.com/astral-sh/uv" target="_blank" rel="noopener">uv</a>, then: <code>uv sync</code></span></li>
-        <li><span class="step-n">3</span><span>Run: <code>uv run python -m batesposture</code></span></li>
-      </ol>
-    </div>
+    <ol class="install-steps">
+      <li><span class="step-n">1</span><span>Clone: <code>git clone https://github.com/wtbates99/batesposture.git &amp;&amp; cd batesposture</code></span></li>
+      <li><span class="step-n">2</span><span>Install dependencies: <code>uv sync --all-groups</code></span></li>
+      <li><span class="step-n">3</span><span>Run: <code>uv run batesposture</code> &nbsp;or&nbsp; <code>uv run python -m batesposture</code></span></li>
+      <li><span class="step-n">4</span><span>Grant <strong>camera permission</strong> when prompted, then complete the 6-second calibration on first launch.</span></li>
+      <li><span class="step-n">5</span><span><strong>Linux / GNOME:</strong> may need the <a href="https://extensions.gnome.org/extension/615/appindicator-support/" target="_blank" rel="noopener">AppIndicator extension</a> for tray support.</span></li>
+    </ol>
   </div>
 </section>
 
-<!-- platform requirements -->
 <section id="requirements">
   <div class="container">
     <div class="section-label">requirements</div>
@@ -484,7 +422,7 @@
         <h3>Windows</h3>
         <ul>
           <li>Windows 10 or 11 (64-bit)</li>
-          <li>Python 3.10+</li>
+          <li>Python 3.10+ &amp; uv</li>
           <li>Built-in or USB webcam</li>
           <li>Camera permission granted</li>
         </ul>
@@ -493,7 +431,7 @@
         <h3>Linux</h3>
         <ul>
           <li>Ubuntu 20.04+ or equivalent</li>
-          <li>Python 3.10+</li>
+          <li>Python 3.10+ &amp; uv</li>
           <li>X11 or Wayland desktop</li>
           <li>Built-in or USB webcam</li>
         </ul>
@@ -502,7 +440,6 @@
   </div>
 </section>
 
-<!-- privacy -->
 <section id="privacy">
   <div class="container">
     <div class="section-label">privacy</div>
@@ -521,7 +458,6 @@
   </div>
 </section>
 
-<!-- footer -->
 <footer>
   <p>
     BatesPosture is free and open source —
@@ -533,36 +469,5 @@
   </p>
 </footer>
 
-<script>
-  const REPO = "wtbates99/batesposture";
-  const RELEASES_API = `https://api.github.com/repos/${REPO}/releases/latest`;
-
-  async function initVersion() {
-    try {
-      const res = await fetch(RELEASES_API);
-      if (res.ok) {
-        const data = await res.json();
-        const version = data.tag_name || "";
-        if (version) {
-          const el = document.getElementById("latest-version");
-          el.textContent = version;
-          el.href = `https://github.com/${REPO}/releases/tag/${version}`;
-        }
-      }
-    } catch (_) { /* offline / rate-limited */ }
-  }
-
-  function showTab(id) {
-    document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
-    document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
-    const content = document.getElementById(`tab-${id}`);
-    if (content) content.classList.add("active");
-    document.querySelectorAll(".tab-btn").forEach(btn => {
-      if (btn.getAttribute("onclick") === `showTab('${id}')`) btn.classList.add("active");
-    });
-  }
-
-  initVersion();
-</script>
 </body>
 </html>
