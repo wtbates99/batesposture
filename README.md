@@ -2,7 +2,7 @@
 
 BatesPosture is a tray-first desktop posture monitor built with PyQt6, OpenCV, and MediaPipe. It watches your webcam locally, scores posture in real time, shows a live dashboard, and nudges you when your posture drops below a threshold you control.
 
-The marketing site lives at [posture.palanbates.com](https://posture.palanbates.com). Source for the site is in `web/` and is served as a static nginx image deployed via the `palanbates` home-server stack (Cloudflare Tunnel + Watchtower).
+The marketing site lives at [posture.palanbates.com](https://posture.palanbates.com). Source for the site is in `web/`.
 
 The app is designed to stay out of the way:
 
@@ -194,11 +194,9 @@ QT_QPA_PLATFORM=offscreen uv run python -m pytest
 uv run pre-commit run --all-files
 ```
 
-## Website & Deployment
+## Website
 
-The marketing site (`web/index.html`) is built into a tiny nginx image by `.github/workflows/docker-publish.yml`, pushed to `ghcr.io/wtbates99/batesposture:latest`, and pulled onto the home server by Watchtower. Cloudflare Tunnel routes `posture.palanbates.com` to the container. There is no GitHub Pages deployment.
-
-To preview the site locally:
+The marketing site source lives in `web/index.html`. To preview it locally:
 
 ```bash
 docker build -t batesposture-site .
