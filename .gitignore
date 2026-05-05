@@ -1,5 +1,6 @@
 .DS_Store
 .vscode/
+.codex
 
 #ipfile.lock
 user_settings.json
