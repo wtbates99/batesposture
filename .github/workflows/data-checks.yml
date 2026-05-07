@@ -104,10 +104,35 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py::test_settings_reload_resizes_buffer
 
-      - name: Test integration notifications and absence
+      - name: Test integration notification threshold
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py::test_notification_fires_below_threshold batesposture/tests/test_integration_pipeline.py::test_notification_suppressed_above_threshold batesposture/tests/test_integration_pipeline.py::test_notification_suppressed_during_cooldown batesposture/tests/test_integration_pipeline.py::test_notification_fires_after_cooldown_expires batesposture/tests/test_integration_pipeline.py::test_mark_absent_does_not_add_scores batesposture/tests/test_integration_pipeline.py::test_mark_absent_breaks_streak batesposture/tests/test_integration_pipeline.py::test_mark_absent_saves_best_streak batesposture/tests/test_integration_pipeline.py::test_mark_absent_idempotent_when_no_streak batesposture/tests/test_integration_pipeline.py::test_pause_session_excludes_absence_from_duration batesposture/tests/test_integration_pipeline.py::test_score_service_thread_safety batesposture/tests/test_integration_pipeline.py::test_dashboard_history_persists_and_reloads batesposture/tests/test_integration_pipeline.py::test_dashboard_history_limit batesposture/tests/test_integration_pipeline.py::test_dashboard_history_empty_db
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py::test_notification_fires_below_threshold batesposture/tests/test_integration_pipeline.py::test_notification_suppressed_above_threshold
+
+      - name: Test integration notification cooldown
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py::test_notification_suppressed_during_cooldown batesposture/tests/test_integration_pipeline.py::test_notification_fires_after_cooldown_expires
+
+      - name: Test integration absence streaks
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py::test_mark_absent_does_not_add_scores batesposture/tests/test_integration_pipeline.py::test_mark_absent_breaks_streak batesposture/tests/test_integration_pipeline.py::test_mark_absent_saves_best_streak batesposture/tests/test_integration_pipeline.py::test_mark_absent_idempotent_when_no_streak
+
+      - name: Test integration session timing
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py::test_pause_session_excludes_absence_from_duration
+
+      - name: Test integration score threading
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py::test_score_service_thread_safety
+
+      - name: Test integration dashboard history
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py::test_dashboard_history_persists_and_reloads batesposture/tests/test_integration_pipeline.py::test_dashboard_history_limit batesposture/tests/test_integration_pipeline.py::test_dashboard_history_empty_db
 
       - name: Test launch and MediaPipe compatibility
         env:
