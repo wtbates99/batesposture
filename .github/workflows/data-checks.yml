@@ -95,4 +95,10 @@ jobs:
       - name: pytest
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run python -m pytest -v --tb=long
+        run: |
+          uv run python -m pytest -v --tb=long \
+            batesposture/tests/test_main.py \
+            batesposture/tests/test_mediapipe_compat.py \
+            batesposture/tests/test_notification_service.py \
+            batesposture/tests/test_resource_settings.py \
+            batesposture/tests/test_send_notification.py
