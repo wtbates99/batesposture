@@ -22,9 +22,11 @@ from typing import (
     get_type_hints,
 )
 
-from PyQt6.QtCore import QSettings, QStandardPaths
-
+# Import MediaPipe before PyQt6 on Windows to avoid DLL initialization failures
+# when settings are imported outside the main application entry point.
 from ..ml.mediapipe_compat import MP_SOLUTIONS
+
+from PyQt6.QtCore import QSettings, QStandardPaths
 
 
 SETTINGS_SCHEMA_VERSION = "1.1.0"
