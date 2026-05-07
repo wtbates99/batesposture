@@ -10,7 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  checks:
+  quality:
+    name: Quality / Ubuntu / Python 3.11
     runs-on: ubuntu-latest
 
     steps:
@@ -24,50 +25,25 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      # cv2 needs libGL; PyQt6 needs xcb/EGL even in offscreen mode
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            libgl1 libglib2.0-0 \
-            libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
-            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
-            libxcb-xfixes0 libxkbcommon-x11-0 libegl1
-
       - name: Install dependencies
         run: uv sync --all-groups
-
-      - name: Verify key imports
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: |
-          uv run python -c "import batesposture; print('batesposture OK')"
-          uv run python -c "import cv2; print('cv2 OK')"
-          uv run python -c "import mediapipe; print('mediapipe OK')"
-          uv run python -c "from PyQt6.QtCore import QSettings; print('PyQt6 OK')"
-          uv run python -c "from batesposture.services.settings_service import SettingsService; print('SettingsService OK')"
-          uv run python -c "from batesposture.ml.pose_detector import PoseDetector; print('PoseDetector OK')"
 
       - name: Run pre-commit
         run: uv run pre-commit run --all-files
 
-      - name: Check PR title for conventional commit format
+      - name: Check PR title
         if: github.event_name == 'pull_request'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          uv run python .github/workflows/title_check.py $(pwd) "$PR_TITLE"
+        run: uv run python .github/workflows/title_check.py $(pwd) "$PR_TITLE"
 
-      - name: pytest
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: uv run python -m pytest -v --tb=long
-
-  windows-checks:
-    runs-on: windows-latest
+  regression-tests:
+    name: Regression / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.10", "3.11"]
 
     steps:
@@ -81,18 +57,54 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
+      # cv2 needs libGL; PyQt6 needs xcb/EGL even in offscreen mode.
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libglib2.0-0 \
+            libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xfixes0 libxkbcommon-x11-0 libegl1
+
       - name: Install dependencies
         run: uv sync --all-groups
 
-      - name: Verify Windows launch imports
+      - name: Verify launch imports
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
           uv run python -c "import mediapipe as mp; assert mp.__version__ == '0.10.21'; print(f'mediapipe {mp.__version__}')"
           uv run python -c "import batesposture.main; print('batesposture.main OK')"
-          uv run python -c "from batesposture.services.settings_service import ResourceSettings; assert ResourceSettings().icon_path.lower().endswith('.ico'); print(ResourceSettings().icon_path)"
+          uv run python -c "from batesposture.services.settings_service import ResourceSettings; path = ResourceSettings().icon_path.lower(); import os; assert path.endswith('.ico' if os.name == 'nt' else '.png'); print(path)"
 
-      - name: pytest
+      - name: Test database
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run python -m pytest -v --tb=long
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_database.py
+
+      - name: Test integration pipeline
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py
+
+      - name: Test launch and MediaPipe compatibility
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_main.py batesposture/tests/test_mediapipe_compat.py
+
+      - name: Test notifications and resources
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_notification_service.py batesposture/tests/test_resource_settings.py batesposture/tests/test_send_notification.py
+
+      - name: Test pose and score services
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_pose_detector.py batesposture/tests/test_score_service.py
+
+      - name: Test tray UI
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_tray.py
