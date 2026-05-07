@@ -10,6 +10,21 @@ prevent injection from untrusted message or title strings.
 """
 import platform
 import subprocess
+from pathlib import Path
+
+
+def _plyer_notification_kwargs(
+    message: str, title: str, icon_path: str
+) -> dict[str, object]:
+    kwargs: dict[str, object] = {
+        "title": title,
+        "message": message,
+        "timeout": 10,
+    }
+    icon = Path(icon_path)
+    if icon.is_file() and icon.suffix.lower() == ".ico":
+        kwargs["app_icon"] = str(icon)
+    return kwargs
 
 
 def send_notification(message: str, title: str, icon_path: str) -> None:
@@ -39,9 +54,4 @@ def send_notification(message: str, title: str, icon_path: str) -> None:
     else:
         from plyer import notification
 
-        notification.notify(
-            title=title,
-            message=message,
-            app_icon=icon_path,
-            timeout=10,
-        )
+        notification.notify(**_plyer_notification_kwargs(message, title, icon_path))

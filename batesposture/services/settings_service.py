@@ -132,11 +132,14 @@ def _default_posture_weights() -> List[float]:
     return list(DEFAULT_POSTURE_WEIGHTS)
 
 
+def _default_icon_path() -> str:
+    icon_name = "icon.ico" if os.name == "nt" else "icon.png"
+    return get_resource_path(f"batesposture/static/{icon_name}")
+
+
 @dataclass(frozen=True)
 class ResourceSettings:
-    icon_path: str = field(
-        default_factory=lambda: get_resource_path("batesposture/static/icon.png")
-    )
+    icon_path: str = field(default_factory=_default_icon_path)
     default_db_name: str = field(
         default_factory=lambda: str(get_app_data_dir() / "posture_data.db")
     )

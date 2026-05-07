@@ -4,6 +4,11 @@ import os
 import sys
 
 import psutil
+
+# Import MediaPipe before PyQt6 on Windows to avoid DLL initialization failures
+# observed when Qt loads first.
+from .ml import mediapipe_compat as _mediapipe_compat  # noqa: F401
+
 from PyQt6.QtCore import QLockFile
 from PyQt6.QtWidgets import QApplication
 

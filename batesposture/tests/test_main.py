@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+import inspect
+
 from .. import main as main_module
+
+
+def test_mediapipe_compat_imports_before_pyqt6():
+    source = inspect.getsource(main_module)
+
+    assert source.index("from .ml import mediapipe_compat") < source.index(
+        "from PyQt6.QtCore import QLockFile"
+    )
 
 
 class FakeLock:
