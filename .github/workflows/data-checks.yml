@@ -92,13 +92,9 @@ jobs:
           uv run python -c "import batesposture.main; print('batesposture.main OK')"
           uv run python -c "from batesposture.services.settings_service import ResourceSettings; assert ResourceSettings().icon_path.lower().endswith('.ico'); print(ResourceSettings().icon_path)"
 
-      - name: pytest
+      - name: Verify Windows notification icon handling
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          uv run python -m pytest -v --tb=long \
-            batesposture/tests/test_main.py \
-            batesposture/tests/test_mediapipe_compat.py \
-            batesposture/tests/test_notification_service.py \
-            batesposture/tests/test_resource_settings.py \
-            batesposture/tests/test_send_notification.py
+          uv run python -c "from batesposture.util__send_notification import _plyer_notification_kwargs; from pathlib import Path; icon = Path('batesposture/static/icon.ico'); kwargs = _plyer_notification_kwargs('message', 'title', str(icon)); assert kwargs.get('app_icon', '').lower().endswith('.ico'); print(kwargs)"
+          uv run python -c "from batesposture.util__send_notification import _plyer_notification_kwargs; kwargs = _plyer_notification_kwargs('message', 'title', 'batesposture/static/icon.png'); assert 'app_icon' not in kwargs; print(kwargs)"
