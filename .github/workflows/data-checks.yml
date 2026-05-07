@@ -84,10 +84,46 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: uv run python -m pytest -v --tb=long batesposture/tests/test_database.py
 
-      - name: Test integration pipeline
+      - name: Test integration scoring
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py
+        run: |
+          uv run python -m pytest -v --tb=long \
+            batesposture/tests/test_integration_pipeline.py::test_score_service_accumulates_scores \
+            batesposture/tests/test_integration_pipeline.py::test_score_service_returns_zero_when_empty \
+            batesposture/tests/test_integration_pipeline.py::test_settings_reload_propagates_threshold \
+            batesposture/tests/test_integration_pipeline.py::test_settings_reload_resizes_buffer
+
+      - name: Test integration notifications
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          uv run python -m pytest -v --tb=long \
+            batesposture/tests/test_integration_pipeline.py::test_notification_fires_below_threshold \
+            batesposture/tests/test_integration_pipeline.py::test_notification_suppressed_above_threshold \
+            batesposture/tests/test_integration_pipeline.py::test_notification_suppressed_during_cooldown \
+            batesposture/tests/test_integration_pipeline.py::test_notification_fires_after_cooldown_expires
+
+      - name: Test integration absence and concurrency
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          uv run python -m pytest -v --tb=long \
+            batesposture/tests/test_integration_pipeline.py::test_mark_absent_does_not_add_scores \
+            batesposture/tests/test_integration_pipeline.py::test_mark_absent_breaks_streak \
+            batesposture/tests/test_integration_pipeline.py::test_mark_absent_saves_best_streak \
+            batesposture/tests/test_integration_pipeline.py::test_mark_absent_idempotent_when_no_streak \
+            batesposture/tests/test_integration_pipeline.py::test_pause_session_excludes_absence_from_duration \
+            batesposture/tests/test_integration_pipeline.py::test_score_service_thread_safety
+
+      - name: Test integration dashboard history
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          uv run python -m pytest -v --tb=long \
+            batesposture/tests/test_integration_pipeline.py::test_dashboard_history_persists_and_reloads \
+            batesposture/tests/test_integration_pipeline.py::test_dashboard_history_limit \
+            batesposture/tests/test_integration_pipeline.py::test_dashboard_history_empty_db
 
       - name: Test launch and MediaPipe compatibility
         env:
