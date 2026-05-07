@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import inspect
 
+import batesposture
 from .. import main as main_module
+
+
+def test_package_imports_mediapipe_compat():
+    source = inspect.getsource(batesposture)
+
+    assert "from .ml import mediapipe_compat" in source
 
 
 def test_mediapipe_compat_imports_before_pyqt6():
