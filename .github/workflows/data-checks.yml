@@ -79,7 +79,32 @@ jobs:
           uv run python -c "import batesposture.main; print('batesposture.main OK')"
           uv run python -c "from batesposture.services.settings_service import ResourceSettings; path = ResourceSettings().icon_path.lower(); import os; assert path.endswith('.ico' if os.name == 'nt' else '.png'); print(path)"
 
-      - name: Run full regression test suite
+      - name: Test database
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run python -m pytest -v --tb=long
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_database.py
+
+      - name: Test integration pipeline
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_integration_pipeline.py
+
+      - name: Test launch and MediaPipe compatibility
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_main.py batesposture/tests/test_mediapipe_compat.py
+
+      - name: Test notifications and resources
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_notification_service.py batesposture/tests/test_resource_settings.py batesposture/tests/test_send_notification.py
+
+      - name: Test pose and score services
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_pose_detector.py batesposture/tests/test_score_service.py
+
+      - name: Test tray UI
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest -v --tb=long batesposture/tests/test_tray.py
