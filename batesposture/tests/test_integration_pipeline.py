@@ -171,21 +171,25 @@ def test_mark_absent_does_not_add_scores(score_service):
 
 def test_mark_absent_breaks_streak(score_service):
     """A good-posture streak must be ended by an absence so time away never inflates it."""
-    for _ in range(10):
-        score_service.add_score(90.0)
-    assert score_service.current_streak_s > 0.0
+    with patch("batesposture.services.score_service.monotonic", return_value=1000.0):
+        for _ in range(10):
+            score_service.add_score(90.0)
 
-    score_service.mark_absent()
+    with patch("batesposture.services.score_service.monotonic", return_value=1010.0):
+        assert score_service.current_streak_s > 0.0
+        score_service.mark_absent()
     assert score_service.current_streak_s == 0.0
 
 
 def test_mark_absent_saves_best_streak(score_service):
     """best_streak_s must capture the streak that was broken by absence."""
-    for _ in range(10):
-        score_service.add_score(90.0)
-    streak_before = score_service.current_streak_s
+    with patch("batesposture.services.score_service.monotonic", return_value=1000.0):
+        for _ in range(10):
+            score_service.add_score(90.0)
 
-    score_service.mark_absent()
+    with patch("batesposture.services.score_service.monotonic", return_value=1010.0):
+        streak_before = score_service.current_streak_s
+        score_service.mark_absent()
     assert score_service.best_streak_s >= streak_before
 
 
