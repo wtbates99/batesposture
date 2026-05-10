@@ -1,0 +1,16 @@
+{
+  "name": "BatesPosture",
+  "short_name": "BatesPosture",
+  "description": "Free, open-source real-time desktop posture monitor using webcam and MediaPipe. 100% local.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#060806",
+  "theme_color": "#060806",
+  "orientation": "portrait",
+  "lang": "en-US",
+  "categories": ["health", "productivity", "utilities"],
+  "icons": [
+    { "src": "/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

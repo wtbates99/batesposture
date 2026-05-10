@@ -1,0 +1,5 @@
+Contact: https://github.com/wtbates99/batesposture/issues
+Expires: 2027-12-31T23:59:59Z
+Preferred-Languages: en
+Canonical: https://posture.palanbates.com/.well-known/security.txt
+Policy: https://github.com/wtbates99/batesposture/blob/main/SECURITY.md

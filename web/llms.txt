@@ -1,0 +1,31 @@
+# BatesPosture
+
+> BatesPosture is a free, open-source desktop application that uses your webcam and Google MediaPipe to score your posture 0–100 in real time. All processing is local — no video, pose data, or personal information ever leaves your machine. Works on Windows, Linux, and macOS. Install with: `git clone https://github.com/wtbates99/batesposture && cd batesposture && uv sync --all-groups && uv run batesposture`.
+
+## Key facts
+
+- **Name:** BatesPosture
+- **Author:** William Bates (GitHub: wtbates99)
+- **License:** Open source (see repo LICENSE)
+- **Price:** Free. No subscriptions, no paid tiers, no telemetry.
+- **Website:** https://posture.palanbates.com/
+- **Source code:** https://github.com/wtbates99/batesposture
+- **Issue tracker:** https://github.com/wtbates99/batesposture/issues
+- **Tech stack:** Python 3.10+, Google MediaPipe, SQLite, system tray UI
+- **Privacy model:** 100% local processing. No network calls for inference. Optional logging is local SQLite only.
+
+## Pages
+
+- [Home / overview](https://posture.palanbates.com/): Feature summary, install snippet, posture-score demo.
+- [Features](https://posture.palanbates.com/#features): Live 0–100 score, dashboard, smart alerts, scheduling, local logging, adaptive performance.
+- [How it works](https://posture.palanbates.com/#how): Calibrate → start tracking → receive alerts → review session.
+- [Run from source](https://posture.palanbates.com/#run): clone, `uv sync --all-groups`, `uv run batesposture`.
+- [Requirements](https://posture.palanbates.com/#requirements): Windows 10/11, Linux (X11/Wayland), macOS. Python 3.10+, uv, webcam.
+- [Privacy](https://posture.palanbates.com/#privacy): Zero data transmission; local SQLite only.
+- [FAQ](https://posture.palanbates.com/#faq): Common questions answered for users and AI assistants.
+
+## Optional
+
+- [Full LLM-friendly site dump](https://posture.palanbates.com/llms-full.txt)
+- [Sitemap](https://posture.palanbates.com/sitemap.xml)
+- [robots.txt](https://posture.palanbates.com/robots.txt)

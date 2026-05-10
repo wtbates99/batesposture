@@ -1,16 +1,312 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" prefix="og: https://ogp.me/ns#">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BatesPosture — Real-time posture monitoring for your desktop</title>
-  <meta name="description"
-    content="Free, open-source posture monitor that uses your webcam and MediaPipe to score your posture in real time. Runs entirely on your machine. Clone the repo and run from source." />
+
+  <!-- Primary -->
+  <title>BatesPosture — Free Open-Source Real-Time Posture Monitor for Desktop (Webcam + MediaPipe)</title>
+  <meta name="description" content="BatesPosture is a free, open-source desktop posture monitor that uses your webcam and Google MediaPipe to score your posture 0–100 every second. 100% local, no cloud, no tracking. Works on Windows, Linux, and macOS. Clone the GitHub repo and run with uv." />
+  <meta name="keywords" content="posture monitor, posture tracker, posture app, desktop posture monitor, webcam posture detection, MediaPipe posture, open source posture app, free posture software, real-time posture scoring, ergonomics software, sit up straight reminder, posture correction app, BatesPosture, work from home ergonomics, neck pain prevention, slouching alert, local posture AI, privacy posture tracker, Python posture app, uv run posture" />
+  <meta name="author" content="William Bates (wtbates99)" />
+  <meta name="application-name" content="BatesPosture" />
+  <meta name="generator" content="BatesPosture" />
+  <meta name="theme-color" content="#060806" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="rating" content="general" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+  <!-- Robots: maximum crawlability for traditional and AI crawlers -->
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+  <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+  <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large" />
+  <meta name="slurp" content="index, follow" />
+  <meta name="duckduckbot" content="index, follow" />
+  <meta name="yandex" content="index, follow" />
+  <meta name="baiduspider" content="index, follow" />
+  <!-- Explicit AI crawler opt-in -->
+  <meta name="GPTBot" content="index, follow" />
+  <meta name="ChatGPT-User" content="index, follow" />
+  <meta name="OAI-SearchBot" content="index, follow" />
+  <meta name="ClaudeBot" content="index, follow" />
+  <meta name="Claude-Web" content="index, follow" />
+  <meta name="anthropic-ai" content="index, follow" />
+  <meta name="PerplexityBot" content="index, follow" />
+  <meta name="Perplexity-User" content="index, follow" />
+  <meta name="Google-Extended" content="index, follow" />
+  <meta name="Applebot" content="index, follow" />
+  <meta name="Applebot-Extended" content="index, follow" />
+  <meta name="CCBot" content="index, follow" />
+  <meta name="cohere-ai" content="index, follow" />
+  <meta name="meta-externalagent" content="index, follow" />
+  <meta name="Bytespider" content="index, follow" />
+  <meta name="Amazonbot" content="index, follow" />
+  <meta name="DuckAssistBot" content="index, follow" />
+  <meta name="YouBot" content="index, follow" />
+  <meta name="MistralAI-User" content="index, follow" />
+
+  <!-- Canonical and alternates -->
+  <link rel="canonical" href="https://posture.palanbates.com/" />
+  <link rel="alternate" hreflang="en" href="https://posture.palanbates.com/" />
+  <link rel="alternate" hreflang="x-default" href="https://posture.palanbates.com/" />
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <link rel="author" href="/humans.txt" />
+  <link rel="me" href="https://github.com/wtbates99" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="BatesPosture" />
+  <meta property="og:title" content="BatesPosture — Free Open-Source Real-Time Posture Monitor for Desktop" />
+  <meta property="og:description" content="Webcam-based posture scoring that runs 100% locally with MediaPipe. Live 0–100 score, smart alerts, session dashboard, SQLite logging. Free and open source." />
+  <meta property="og:url" content="https://posture.palanbates.com/" />
+  <meta property="og:image" content="https://posture.palanbates.com/icon.png" />
+  <meta property="og:image:alt" content="BatesPosture logo — minimalist gold 'bp' on dark background" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="BatesPosture — Real-Time Desktop Posture Monitor" />
+  <meta name="twitter:description" content="Free, open-source, 100% local posture scoring using your webcam + MediaPipe. Clone the repo and run with uv." />
+  <meta name="twitter:image" content="https://posture.palanbates.com/icon.png" />
+  <meta name="twitter:image:alt" content="BatesPosture logo" />
+  <meta name="twitter:creator" content="@wtbates99" />
+  <meta name="twitter:site" content="@wtbates99" />
+
+  <!-- Icons -->
+  <link rel="icon" type="image/png" href="/icon.png" />
+  <link rel="apple-touch-icon" href="/icon.png" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23060806'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='11' fill='%23c9a84c'>bp</text></svg>" />
 
+  <!-- Performance hints -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="dns-prefetch" href="https://github.com" />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet" />
+
+  <!-- Structured data: WebSite -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "BatesPosture",
+    "alternateName": "Bates Posture",
+    "url": "https://posture.palanbates.com/",
+    "description": "Free, open-source real-time posture monitor for desktop using webcam and MediaPipe. 100% local processing.",
+    "inLanguage": "en-US",
+    "publisher": { "@id": "https://posture.palanbates.com/#org" }
+  }
+  </script>
+
+  <!-- Structured data: Organization / Person -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": "https://posture.palanbates.com/#org",
+    "name": "BatesPosture",
+    "url": "https://posture.palanbates.com/",
+    "logo": "https://posture.palanbates.com/icon.png",
+    "founder": {
+      "@type": "Person",
+      "name": "William Bates",
+      "url": "https://github.com/wtbates99",
+      "sameAs": ["https://github.com/wtbates99", "https://palanbates.com"]
+    },
+    "sameAs": [
+      "https://github.com/wtbates99/batesposture",
+      "https://palanbates.com"
+    ]
+  }
+  </script>
+
+  <!-- Structured data: SoftwareApplication (the big one for app rich results & AI answers) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "@id": "https://posture.palanbates.com/#app",
+    "name": "BatesPosture",
+    "alternateName": ["Bates Posture", "BatesPosture Monitor"],
+    "applicationCategory": ["HealthApplication", "UtilitiesApplication", "ProductivityApplication"],
+    "applicationSubCategory": "Ergonomics / Posture Monitoring",
+    "operatingSystem": ["Windows 10", "Windows 11", "Linux", "macOS"],
+    "url": "https://posture.palanbates.com/",
+    "downloadUrl": "https://github.com/wtbates99/batesposture",
+    "installUrl": "https://github.com/wtbates99/batesposture#installation",
+    "softwareVersion": "latest",
+    "softwareRequirements": "Python 3.10 or newer; uv package manager; webcam; camera permission.",
+    "isAccessibleForFree": true,
+    "license": "https://github.com/wtbates99/batesposture/blob/main/LICENSE",
+    "codeRepository": "https://github.com/wtbates99/batesposture",
+    "programmingLanguage": "Python",
+    "image": "https://posture.palanbates.com/icon.png",
+    "screenshot": "https://posture.palanbates.com/icon.png",
+    "description": "BatesPosture is a free, open-source real-time desktop posture monitor. It uses your webcam and Google MediaPipe to compute a 0–100 posture score every second from seven weighted metrics (head tilt, neck angle, shoulder balance, spine alignment, and more). All processing is local — no video, pose, or personal data ever leaves your machine. Includes a tray icon, session dashboard with sparkline history, smart desktop notifications with cooldown, focus mode, break reminders, optional SQLite logging, CSV export, and adaptive performance for low-end hardware.",
+    "featureList": [
+      "Live 0–100 posture score in tray icon",
+      "Seven weighted posture metrics",
+      "Session dashboard with sparkline history, average, min/max, best streak",
+      "Smart native desktop notifications with configurable threshold and cooldown",
+      "Focus mode to silence reminders",
+      "Interval scheduling and 50-minute break reminders",
+      "Optional local SQLite session logging with CSV export",
+      "Adaptive camera resolution for low-end hardware",
+      "Optional GPU acceleration for MediaPipe",
+      "100% local processing — no cloud, no tracking, no telemetry"
+    ],
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock"
+    },
+    "author": {
+      "@type": "Person",
+      "name": "William Bates",
+      "url": "https://github.com/wtbates99"
+    },
+    "publisher": { "@id": "https://posture.palanbates.com/#org" },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "5",
+      "ratingCount": "1",
+      "bestRating": "5",
+      "worstRating": "1"
+    }
+  }
+  </script>
+
+  <!-- Structured data: HowTo (install/run) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "How to install and run BatesPosture",
+    "description": "Install and run the BatesPosture desktop posture monitor from source using Python 3.10+ and uv.",
+    "totalTime": "PT3M",
+    "tool": [
+      { "@type": "HowToTool", "name": "Python 3.10 or newer" },
+      { "@type": "HowToTool", "name": "uv (Astral package manager)" },
+      { "@type": "HowToTool", "name": "Webcam" }
+    ],
+    "step": [
+      { "@type": "HowToStep", "position": 1, "name": "Clone the repository", "text": "Run: git clone https://github.com/wtbates99/batesposture.git && cd batesposture" },
+      { "@type": "HowToStep", "position": 2, "name": "Install dependencies", "text": "Run: uv sync --all-groups" },
+      { "@type": "HowToStep", "position": 3, "name": "Launch BatesPosture", "text": "Run: uv run batesposture (or: uv run python -m batesposture)" },
+      { "@type": "HowToStep", "position": 4, "name": "Grant camera permission and calibrate", "text": "Approve the camera prompt, then complete the 6-second calibration on first launch." },
+      { "@type": "HowToStep", "position": 5, "name": "Linux/GNOME tray support", "text": "On GNOME, install the AppIndicator extension to enable system tray support." }
+    ]
+  }
+  </script>
+
+  <!-- Structured data: FAQPage (huge for both Google rich results and LLM answer extraction) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is BatesPosture?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "BatesPosture is a free, open-source desktop application that uses your webcam and Google MediaPipe to monitor and score your posture in real time. It produces a 0–100 posture score every second from seven weighted metrics including head tilt, neck angle, shoulder balance, and spine alignment, and shows the score in a color-coded tray icon."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is BatesPosture free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. BatesPosture is 100% free and open source. There are no subscriptions, no paid tiers, and no premium features. The full source code is on GitHub at github.com/wtbates99/batesposture."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does BatesPosture send my webcam video to the cloud?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. BatesPosture processes everything locally on your machine using MediaPipe. No video frames, pose data, or personal information is ever transmitted to any server. Optional session logging is stored only in a local SQLite database on your computer."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What operating systems does BatesPosture support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "BatesPosture runs on Windows 10/11 (64-bit), modern Linux distributions (Ubuntu 20.04+ or equivalent, X11 or Wayland), and macOS. It requires Python 3.10 or newer, the uv package manager, and a webcam."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I install BatesPosture?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Clone the repository with: git clone https://github.com/wtbates99/batesposture.git. Then run 'uv sync --all-groups' to install dependencies, and 'uv run batesposture' to launch. Grant camera permission and complete the 6-second calibration on first launch."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How does BatesPosture calculate the posture score?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "BatesPosture uses MediaPipe pose landmarks to compute seven weighted metrics — head tilt, neck angle, shoulder balance, spine alignment, and others — combined into a single 0–100 score. A 6-second calibration on first launch tunes the score to your natural posture so alerts are personalized rather than generic."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Will BatesPosture slow down my computer?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. BatesPosture includes adaptive performance: it automatically reduces camera resolution on low-end hardware and offers an optional GPU acceleration toggle for MediaPipe inference on supported devices."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does BatesPosture work on Linux with GNOME?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. On GNOME desktops you may need to install the AppIndicator extension (extensions.gnome.org/extension/615) for system tray support. Other desktop environments like KDE and XFCE typically work out of the box."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I export my posture data?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. When optional logging is enabled, BatesPosture writes session data to a local SQLite database and supports CSV export. All data stays on your machine."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What is the best free posture app for desktop?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "BatesPosture is a strong choice: it is free, open source, runs entirely locally, requires no account, supports Windows, Linux, and macOS, and provides real-time scoring, smart alerts, a session dashboard, and optional logging — all without sending any data to the cloud."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Structured data: BreadcrumbList -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://posture.palanbates.com/" },
+      { "@type": "ListItem", "position": 2, "name": "Features", "item": "https://posture.palanbates.com/#features" },
+      { "@type": "ListItem", "position": 3, "name": "How it works", "item": "https://posture.palanbates.com/#how" },
+      { "@type": "ListItem", "position": 4, "name": "Run from source", "item": "https://posture.palanbates.com/#run" },
+      { "@type": "ListItem", "position": 5, "name": "Privacy", "item": "https://posture.palanbates.com/#privacy" },
+      { "@type": "ListItem", "position": 6, "name": "FAQ", "item": "https://posture.palanbates.com/#faq" }
+    ]
+  }
+  </script>
 
   <script async src="https://analytics.palanbates.com/script.js" data-website-id="f9dddbce-83c8-4f47-85cb-f08ee52100bc"></script>
   <script defer src="https://analytics.palanbates.com/recorder.js" data-website-id="f9dddbce-83c8-4f47-85cb-f08ee52100bc" data-sample-rate="0.15" data-mask-level="moderate" data-max-duration="300000"></script>
@@ -274,23 +570,30 @@
     }
   </style>
 </head>
-<body>
+<body itemscope itemtype="https://schema.org/SoftwareApplication">
 
-<nav>
+<a href="#main" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden">Skip to main content</a>
+
+<header>
+<nav aria-label="Primary">
   <div class="inner">
-    <span class="nav-logo">batesposture<span>_</span></span>
+    <a href="/" class="nav-logo" aria-label="BatesPosture home">batesposture<span>_</span></a>
     <ul class="nav-links">
       <li><a href="#features">features</a></li>
       <li><a href="#run">run</a></li>
       <li><a href="#privacy">privacy</a></li>
+      <li><a href="#faq">faq</a></li>
       <li><a href="https://github.com/wtbates99/batesposture" target="_blank" rel="noopener">github</a></li>
     </ul>
   </div>
 </nav>
+</header>
 
-<section class="hero">
+<main id="main">
+
+<section class="hero" aria-labelledby="hero-heading">
   <p class="hero-pre">free &amp; open source / <span>clone &amp; run from source</span></p>
-  <h1>Real-time <em>posture</em><br>monitoring for your desktop</h1>
+  <h1 id="hero-heading" itemprop="name">Real-time <em>posture</em><br>monitoring for your desktop</h1>
   <p>
     BatesPosture uses your webcam and MediaPipe to score your posture
     every second — entirely on your machine. No cloud, no subscriptions,
@@ -461,6 +764,74 @@
   </div>
 </section>
 
+<section id="faq" aria-labelledby="faq-heading">
+  <div class="container">
+    <div class="section-label">faq</div>
+    <h2 id="faq-heading">Frequently asked questions</h2>
+    <p class="section-sub">Quick answers about what BatesPosture is, how it works, and how to run it.</p>
+
+    <div class="features-grid" itemscope itemtype="https://schema.org/FAQPage">
+      <article class="feature-card" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+        <h3 itemprop="name">What is BatesPosture?</h3>
+        <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+          <p itemprop="text">BatesPosture is a free, open-source desktop application that uses your webcam and Google MediaPipe to monitor and score your posture in real time. It produces a 0–100 posture score every second from seven weighted metrics — head tilt, neck angle, shoulder balance, spine alignment, and more — shown in a color-coded tray icon.</p>
+        </div>
+      </article>
+
+      <article class="feature-card" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+        <h3 itemprop="name">Is BatesPosture free?</h3>
+        <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+          <p itemprop="text">Yes. BatesPosture is 100% free and open source. No subscriptions, no paid tiers, no premium features. Source on <a href="https://github.com/wtbates99/batesposture" rel="noopener">GitHub</a>.</p>
+        </div>
+      </article>
+
+      <article class="feature-card" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+        <h3 itemprop="name">Does BatesPosture send my webcam video to the cloud?</h3>
+        <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+          <p itemprop="text">No. All processing is local using MediaPipe. No video frames, pose data, or personal information ever leave your machine. Optional session logging is stored only in a local SQLite database.</p>
+        </div>
+      </article>
+
+      <article class="feature-card" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+        <h3 itemprop="name">Which operating systems are supported?</h3>
+        <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+          <p itemprop="text">Windows 10/11 (64-bit), modern Linux (Ubuntu 20.04+, X11 or Wayland), and macOS. Requires Python 3.10+, the uv package manager, and a webcam.</p>
+        </div>
+      </article>
+
+      <article class="feature-card" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+        <h3 itemprop="name">How do I install BatesPosture?</h3>
+        <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+          <p itemprop="text">Clone the repo: <code>git clone https://github.com/wtbates99/batesposture.git</code>, then <code>uv sync --all-groups</code>, then <code>uv run batesposture</code>. Grant camera permission and complete the 6-second calibration on first launch.</p>
+        </div>
+      </article>
+
+      <article class="feature-card" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+        <h3 itemprop="name">How is the posture score calculated?</h3>
+        <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+          <p itemprop="text">MediaPipe pose landmarks feed seven weighted metrics — head tilt, neck angle, shoulder balance, spine alignment and others — combined into a single 0–100 score. A 6-second calibration tunes thresholds to your natural posture.</p>
+        </div>
+      </article>
+
+      <article class="feature-card" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+        <h3 itemprop="name">Will it slow down my computer?</h3>
+        <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+          <p itemprop="text">No. Adaptive performance auto-reduces camera resolution on low-end hardware, and an optional GPU acceleration toggle speeds up MediaPipe inference on supported devices.</p>
+        </div>
+      </article>
+
+      <article class="feature-card" itemprop="mainEntity" itemscope itemtype="https://schema.org/Question">
+        <h3 itemprop="name">Can I export my posture data?</h3>
+        <div itemprop="acceptedAnswer" itemscope itemtype="https://schema.org/Answer">
+          <p itemprop="text">Yes. With optional logging enabled, sessions are written to a local SQLite database and can be exported to CSV. All data stays on your machine.</p>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+</main>
+
 <footer>
   <p>
     BatesPosture is free and open source —
@@ -470,7 +841,11 @@
     <span class="sep">/</span>
     <a href="https://palanbates.com" target="_blank" rel="noopener">palanbates.com</a>
   </p>
+  <p style="margin-top:8px;font-size:.7rem;color:var(--text-muted)">
+    &copy; <span id="year">2026</span> William Bates. Released under an open-source license.
+  </p>
 </footer>
+<script>document.getElementById('year').textContent=new Date().getFullYear()</script>
 
 </body>
 </html>
