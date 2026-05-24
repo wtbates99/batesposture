@@ -47,10 +47,13 @@ def send_notification(message: str, title: str, icon_path: str) -> None:
         script = f'display notification "{safe_message}" with title "{safe_title}"'
         subprocess.run(["osascript", "-e", script], check=False)
     elif system == "Linux":
-        subprocess.run(
-            ["notify-send", title, message, "-i", icon_path],
-            check=False,
-        )
+        try:
+            subprocess.run(
+                ["notify-send", title, message, "-i", icon_path],
+                check=False,
+            )
+        except FileNotFoundError:
+            pass
     else:
         from plyer import notification
 

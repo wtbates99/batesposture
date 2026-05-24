@@ -741,7 +741,9 @@ class SettingsDialog(QDialog):
             self.ml_settings.min_detection_confidence
         )
         self.detection_confidence_spinbox.setMinimumWidth(110)
-        tuning_form.addRow("Min detection confidence:", self.detection_confidence_spinbox)
+        tuning_form.addRow(
+            "Min detection confidence:", self.detection_confidence_spinbox
+        )
 
         self.tracking_confidence_spinbox = QDoubleSpinBox()
         self.tracking_confidence_spinbox.setRange(0.0, 1.0)
