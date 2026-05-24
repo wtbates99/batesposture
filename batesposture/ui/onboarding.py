@@ -111,6 +111,7 @@ class CalibrationWorker(QObject):
 
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
+    frame_ready = pyqtSignal(object)
 
     def __init__(
         self,
@@ -160,6 +161,7 @@ class CalibrationWorker(QObject):
                 if not ret:
                     time.sleep(0.05)
                     continue
+                self.frame_ready.emit(frame)
                 _, score, result_bundle = detector.process_frame(frame)
                 if not result_bundle:
                     time.sleep(0.05)
@@ -293,9 +295,12 @@ class CameraSetupPage(QWizardPage):
 class CalibrationPage(QWizardPage):
     """Wizard page that runs a 6-second baseline calibration via CalibrationWorker.
 
-    Displays live status and results. The page is only "complete" (wizard's Next/Finish
-    enabled) after a successful CalibrationResult is received. A timeout timer cancels
-    a hung worker after duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS seconds.
+    Shows a live camera feed before and after calibration so the user can see
+    themselves while sitting still. During calibration the worker emits each raw
+    frame via ``frame_ready`` which is forwarded to the same preview label.
+    The page is only "complete" (wizard's Next/Finish enabled) after a successful
+    CalibrationResult is received. A timeout timer cancels a hung worker after
+    duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS seconds.
     """
 
     def __init__(
@@ -309,6 +314,9 @@ class CalibrationPage(QWizardPage):
                 "We'll measure a short sample so posture insights match your neutral stance."
             )
         )
+
+        self.preview = CameraPreviewWidget()
+        self.preview.setMinimumHeight(260)
 
         self.status_label = QLabel(
             self.tr(
@@ -324,6 +332,8 @@ class CalibrationPage(QWizardPage):
         self.start_button.clicked.connect(self._begin_calibration)
 
         layout = QVBoxLayout()
+        layout.addWidget(self.preview)
+        layout.addSpacing(8)
         layout.addWidget(self.status_label)
         layout.addSpacing(12)
         layout.addWidget(self.start_button)
@@ -337,9 +347,18 @@ class CalibrationPage(QWizardPage):
         self._metrics: Optional[CalibrationResult] = None
         self._timeout: Optional[QTimer] = None
 
+    def initializePage(self) -> None:  # noqa: N802 - Qt override
+        self.preview.start(self._settings.runtime.default_camera_id)
+
+    def cleanupPage(self) -> None:  # noqa: N802 - Qt override
+        self.preview.stop()
+        self._cleanup_worker()
+
     def _begin_calibration(self) -> None:
         if self._thread and self._thread.isRunning():
             return
+        # Release the idle preview so the worker can open the same camera.
+        self.preview.stop()
         self.start_button.setEnabled(False)
         self.status_label.setText(
             self.tr("Collecting data... Keep still for six seconds.")
@@ -349,6 +368,7 @@ class CalibrationPage(QWizardPage):
         thread = QThread(self)
         worker.moveToThread(thread)
 
+        worker.frame_ready.connect(self._display_worker_frame)
         worker.finished.connect(self._handle_success)
         worker.failed.connect(self._handle_failure)
         worker.finished.connect(thread.quit)
@@ -369,6 +389,18 @@ class CalibrationPage(QWizardPage):
             (worker.duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS) * 1000
         )
 
+    def _display_worker_frame(self, frame) -> None:
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = frame_rgb.shape
+        image = QImage(frame_rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
+        pixmap = QPixmap.fromImage(image).scaled(
+            self.preview.width(),
+            self.preview.height(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.preview.setPixmap(pixmap)
+
     def _handle_success(self, result: CalibrationResult) -> None:
         self._metrics = result
         self.start_button.setEnabled(True)
@@ -385,6 +417,7 @@ class CalibrationPage(QWizardPage):
             )
         )
         self._cleanup_worker()
+        self.preview.start(self._settings.runtime.default_camera_id)
         self.completeChanged.emit()
 
     def _handle_failure(self, message: str) -> None:
@@ -392,6 +425,7 @@ class CalibrationPage(QWizardPage):
         self.status_label.setText(self.tr("Calibration failed"))
         QMessageBox.warning(self, self.tr("Calibration"), message)
         self._cleanup_worker()
+        self.preview.start(self._settings.runtime.default_camera_id)
 
     def _handle_timeout(self) -> None:
         if self._worker:

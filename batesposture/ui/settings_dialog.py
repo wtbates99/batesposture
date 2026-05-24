@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 from PyQt6.QtCore import QSize, Qt
@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QFrame,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -82,7 +81,7 @@ QCheckBox#advancedToggle::indicator:checked {
     border-color: #2563eb;
 }
 
-/* ── Content area ──────────────────────────────────────────── */
+/* ── Scroll area ───────────────────────────────────────────── */
 QScrollArea {
     border: none;
     background: transparent;
@@ -91,24 +90,29 @@ QScrollArea > QWidget > QWidget {
     background: transparent;
 }
 
-QGroupBox {
-    font-weight: 600;
-    font-size: 12px;
-    color: #1f2937;
+/* ── Cards ─────────────────────────────────────────────────── */
+QFrame#card {
+    background: #ffffff;
     border: 1px solid #e5e7eb;
     border-radius: 10px;
-    margin-top: 20px;
-    background: #ffffff;
 }
-QGroupBox::title {
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    left: 14px;
-    top: -10px;
-    padding: 0 6px;
-    background: #f0f2f5;
+QLabel#cardHeader {
+    font-weight: 600;
+    font-size: 12px;
+    color: #374151;
+    background: transparent;
+}
+QFrame#cardSep {
+    background: #f3f4f6;
+    border: none;
+    min-height: 1px;
+    max-height: 1px;
+}
+QWidget#cardBody {
+    background: transparent;
 }
 
+/* ── Labels ────────────────────────────────────────────────── */
 QLabel {
     color: #374151;
     font-size: 13px;
@@ -243,6 +247,7 @@ class SettingsDialog(QDialog):
             QStyle.StandardPixmap.SP_MessageBoxInformation,
         ),
         ("tracking", "Tracking", QStyle.StandardPixmap.SP_BrowserReload),
+        ("data", "Data", QStyle.StandardPixmap.SP_DriveHDIcon),
         ("advanced", "Advanced", QStyle.StandardPixmap.SP_FileDialogDetailedView),
     ]
 
@@ -256,6 +261,7 @@ class SettingsDialog(QDialog):
             "Control when and how posture alerts are delivered.",
         ),
         "tracking": ("Tracking", "Define tracking schedules and session duration."),
+        "data": ("Data", "Configure session data logging and storage."),
         "advanced": ("Advanced", "Fine-tune detection models and scoring parameters."),
     }
 
@@ -270,8 +276,8 @@ class SettingsDialog(QDialog):
         self.validation_errors: Dict[str, str] = {}
 
         self.setWindowTitle("Settings")
-        self.setMinimumSize(820, 580)
-        self.resize(880, 650)
+        self.setMinimumSize(860, 600)
+        self.resize(920, 680)
         self.setStyleSheet(_STYLESHEET)
 
         self.section_list = self._build_nav_list()
@@ -298,7 +304,7 @@ class SettingsDialog(QDialog):
 
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(185)
+        sidebar.setFixedWidth(190)
         sidebar.setLayout(sidebar_layout)
 
         self._status_label = QLabel(self._status_text())
@@ -328,14 +334,14 @@ class SettingsDialog(QDialog):
         bottom_layout.addStretch()
         bottom_layout.addWidget(self.button_box)
 
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setStyleSheet("color: #2a3345;")
+
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
         body.addWidget(sidebar)
-
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("color: #2a3345;")
         body.addWidget(sep)
         body.addWidget(self.section_stack, 1)
 
@@ -376,6 +382,7 @@ class SettingsDialog(QDialog):
             "camera": self._create_camera_page,
             "notifications": self._create_notifications_page,
             "tracking": self._create_tracking_page,
+            "data": self._create_data_page,
             "advanced": self._create_advanced_page,
         }
         inner = builders.get(key, QWidget)()
@@ -394,27 +401,79 @@ class SettingsDialog(QDialog):
         sub.setObjectName("pageSubtitle")
         div = QFrame()
         div.setFrameShape(QFrame.Shape.HLine)
-        div.setStyleSheet("color: #e5e7eb; margin: 2px 0 6px 0;")
+        div.setStyleSheet("color: #e5e7eb; margin: 4px 0 8px 0;")
         w = QWidget()
         w.setStyleSheet("background: transparent;")
         lay = QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(3)
+        lay.setSpacing(4)
         lay.addWidget(title)
         lay.addWidget(sub)
         lay.addWidget(div)
         return w
 
-    def _make_form(self) -> QFormLayout:
-        form = QFormLayout()
+    def _make_card(self, title: str) -> Tuple[QFrame, QFormLayout]:
+        """Titled white card with a form body. Replaces QGroupBox to avoid title-overlap bugs."""
+        card = QFrame()
+        card.setObjectName("card")
+
+        vbox = QVBoxLayout(card)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(0)
+
+        header = QLabel(title)
+        header.setObjectName("cardHeader")
+        header.setContentsMargins(16, 12, 16, 11)
+        vbox.addWidget(header)
+
+        sep = QFrame()
+        sep.setObjectName("cardSep")
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Plain)
+        vbox.addWidget(sep)
+
+        body = QWidget()
+        body.setObjectName("cardBody")
+        form = QFormLayout(body)
         form.setLabelAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         form.setHorizontalSpacing(16)
-        form.setVerticalSpacing(10)
-        form.setContentsMargins(16, 14, 16, 14)
-        return form
+        form.setVerticalSpacing(12)
+        form.setContentsMargins(16, 14, 16, 16)
+        vbox.addWidget(body)
+
+        return card, form
+
+    def _make_card_vbox(self, title: str) -> Tuple[QFrame, QVBoxLayout]:
+        """Titled white card with a free-form VBox body (for tables, custom rows, etc.)."""
+        card = QFrame()
+        card.setObjectName("card")
+
+        vbox = QVBoxLayout(card)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(0)
+
+        header = QLabel(title)
+        header.setObjectName("cardHeader")
+        header.setContentsMargins(16, 12, 16, 11)
+        vbox.addWidget(header)
+
+        sep = QFrame()
+        sep.setObjectName("cardSep")
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Plain)
+        vbox.addWidget(sep)
+
+        body = QWidget()
+        body.setObjectName("cardBody")
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(16, 14, 16, 16)
+        body_layout.setSpacing(10)
+        vbox.addWidget(body)
+
+        return card, body_layout
 
     def _help_label(self, text: str) -> QLabel:
         label = QLabel(text)
@@ -429,18 +488,21 @@ class SettingsDialog(QDialog):
         label.setVisible(False)
         return label
 
-    # ── pages ─────────────────────────────────────────────────────────────────
-
-    def _create_camera_page(self) -> QWidget:
+    def _page_container(self) -> Tuple[QWidget, QVBoxLayout]:
         container = QWidget()
         container.setStyleSheet("background: #f0f2f5;")
         layout = QVBoxLayout(container)
         layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(12)
+        layout.setSpacing(14)
+        return container, layout
+
+    # ── pages ─────────────────────────────────────────────────────────────────
+
+    def _create_camera_page(self) -> QWidget:
+        container, layout = self._page_container()
         layout.addWidget(self._page_header("camera"))
 
-        group = QGroupBox("Capture")
-        form = self._make_form()
+        card, form = self._make_card("Capture")
 
         self.camera_combo = QComboBox()
         self.camera_combo.setMinimumWidth(200)
@@ -485,8 +547,18 @@ class SettingsDialog(QDialog):
         res_row.addStretch()
         form.addRow("Resolution:", res_row)
 
-        group.setLayout(form)
-        layout.addWidget(group)
+        self.adaptive_resolution_checkbox = QCheckBox(
+            "Automatically lower resolution on slow hardware"
+        )
+        self.adaptive_resolution_checkbox.setChecked(
+            self.runtime_settings.adaptive_resolution
+        )
+        self.adaptive_resolution_checkbox.setToolTip(
+            "Drops to 640×480 at startup if MediaPipe initialisation takes over 100 ms."
+        )
+        form.addRow("Adaptive resolution:", self.adaptive_resolution_checkbox)
+
+        layout.addWidget(card)
         layout.addWidget(
             self._help_label(
                 "Higher resolution improves detection accuracy but increases CPU usage."
@@ -496,39 +568,34 @@ class SettingsDialog(QDialog):
         return container
 
     def _create_notifications_page(self) -> QWidget:
-        container = QWidget()
-        container.setStyleSheet("background: #f0f2f5;")
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(12)
+        container, layout = self._page_container()
         layout.addWidget(self._page_header("notifications"))
 
-        alerts_group = QGroupBox("Alerts")
-        alerts_form = self._make_form()
+        card, form = self._make_card("Alerts")
 
         self.notifications_enabled_checkbox = QCheckBox("Enable desktop notifications")
         self.notifications_enabled_checkbox.setChecked(
             self.runtime_settings.notifications_enabled
         )
-        alerts_form.addRow(self.notifications_enabled_checkbox)
+        form.addRow(self.notifications_enabled_checkbox)
 
         self.focus_mode_checkbox = QCheckBox("Pause reminders during focus mode")
         self.focus_mode_checkbox.setChecked(self.runtime_settings.focus_mode_enabled)
-        alerts_form.addRow(self.focus_mode_checkbox)
+        form.addRow(self.focus_mode_checkbox)
 
         self.cooldown_spinbox = QSpinBox()
         self.cooldown_spinbox.setRange(30, 3600)
         self.cooldown_spinbox.setValue(self.runtime_settings.notification_cooldown)
         self.cooldown_spinbox.setSuffix(" sec")
         self.cooldown_spinbox.setMinimumWidth(130)
-        alerts_form.addRow("Cooldown between alerts:", self.cooldown_spinbox)
+        form.addRow("Cooldown between alerts:", self.cooldown_spinbox)
 
         self.poor_posture_spinbox = QSpinBox()
         self.poor_posture_spinbox.setRange(10, 100)
         self.poor_posture_spinbox.setValue(self.runtime_settings.poor_posture_threshold)
         self.poor_posture_spinbox.setSuffix("%")
         self.poor_posture_spinbox.setMinimumWidth(100)
-        alerts_form.addRow("Alert threshold:", self.poor_posture_spinbox)
+        form.addRow("Alert threshold:", self.poor_posture_spinbox)
 
         self.posture_message_lineedit = QLineEdit()
         self.posture_message_lineedit.setText(
@@ -539,51 +606,20 @@ class SettingsDialog(QDialog):
         self.posture_message_lineedit.textChanged.connect(
             self._validate_posture_message
         )
-        alerts_form.addRow("Reminder message:", self.posture_message_lineedit)
+        form.addRow("Reminder message:", self.posture_message_lineedit)
 
         self.posture_message_error = self._error_label()
-        alerts_form.addRow("", self.posture_message_error)
+        form.addRow("", self.posture_message_error)
 
-        alerts_group.setLayout(alerts_form)
-
-        logging_group = QGroupBox("Data Logging")
-        logging_form = self._make_form()
-
-        self.db_logging_checkbox = QCheckBox("Persist session data to database")
-        self.db_logging_checkbox.setChecked(
-            self.runtime_settings.enable_database_logging
-        )
-        logging_form.addRow(self.db_logging_checkbox)
-
-        self.db_write_interval_spinbox = QSpinBox()
-        self.db_write_interval_spinbox.setRange(60, 3600)
-        self.db_write_interval_spinbox.setSingleStep(60)
-        self.db_write_interval_spinbox.setValue(
-            self.runtime_settings.db_write_interval_seconds
-        )
-        self.db_write_interval_spinbox.setSuffix(" sec")
-        self.db_write_interval_spinbox.setMinimumWidth(130)
-        logging_form.addRow("Write interval:", self.db_write_interval_spinbox)
-
-        logging_group.setLayout(logging_form)
-
-        layout.addWidget(alerts_group)
-        layout.addWidget(logging_group)
+        layout.addWidget(card)
         layout.addStretch()
         return container
 
     def _create_tracking_page(self) -> QWidget:
-        container = QWidget()
-        container.setStyleSheet("background: #f0f2f5;")
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(12)
+        container, layout = self._page_container()
         layout.addWidget(self._page_header("tracking"))
 
-        schedule_group = QGroupBox("Tracking Intervals")
-        schedule_layout = QVBoxLayout()
-        schedule_layout.setContentsMargins(16, 14, 16, 14)
-        schedule_layout.setSpacing(10)
+        intervals_card, intervals_body = self._make_card_vbox("Tracking Intervals")
 
         self.tracking_table = QTableWidget()
         self.tracking_table.setColumnCount(2)
@@ -596,7 +632,7 @@ class SettingsDialog(QDialog):
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         self.tracking_table.setColumnWidth(1, 90)
         self._populate_tracking_table()
-        schedule_layout.addWidget(self.tracking_table)
+        intervals_body.addWidget(self.tracking_table)
 
         add_row = QHBoxLayout()
         add_row.setSpacing(8)
@@ -614,20 +650,25 @@ class SettingsDialog(QDialog):
         add_row.addWidget(self.new_interval_label_edit)
         add_row.addWidget(self.new_interval_spinbox)
         add_row.addWidget(self.add_interval_button)
-        schedule_layout.addLayout(add_row)
+        intervals_body.addLayout(add_row)
 
         self.remove_interval_button = QPushButton("Remove Selected")
         self.remove_interval_button.setObjectName("removeBtn")
         self.remove_interval_button.clicked.connect(self._remove_tracking_interval)
-        schedule_layout.addWidget(self.remove_interval_button)
+        intervals_body.addWidget(self.remove_interval_button)
 
         self.interval_error_label = self._error_label()
-        schedule_layout.addWidget(self.interval_error_label)
+        intervals_body.addWidget(self.interval_error_label)
 
-        schedule_group.setLayout(schedule_layout)
+        layout.addWidget(intervals_card)
+        layout.addWidget(
+            self._help_label(
+                "Intervals define how often tracking restarts. "
+                "Set minutes to 0 for always-on continuous tracking."
+            )
+        )
 
-        duration_group = QGroupBox("Session Duration")
-        duration_form = self._make_form()
+        duration_card, duration_form = self._make_card("Session Duration")
         self.tracking_duration_spinbox = QSpinBox()
         self.tracking_duration_spinbox.setRange(1, 60)
         self.tracking_duration_spinbox.setValue(
@@ -636,36 +677,61 @@ class SettingsDialog(QDialog):
         self.tracking_duration_spinbox.setSuffix(" min")
         self.tracking_duration_spinbox.setMinimumWidth(110)
         duration_form.addRow("Duration per session:", self.tracking_duration_spinbox)
-        duration_group.setLayout(duration_form)
+        layout.addWidget(duration_card)
 
-        layout.addWidget(schedule_group)
+        layout.addStretch()
+        return container
+
+    def _create_data_page(self) -> QWidget:
+        container, layout = self._page_container()
+        layout.addWidget(self._page_header("data"))
+
+        card, form = self._make_card("Session Logging")
+
+        self.db_logging_checkbox = QCheckBox("Persist session data to database")
+        self.db_logging_checkbox.setChecked(
+            self.runtime_settings.enable_database_logging
+        )
+        form.addRow(self.db_logging_checkbox)
+
+        self.db_write_interval_spinbox = QSpinBox()
+        self.db_write_interval_spinbox.setRange(60, 3600)
+        self.db_write_interval_spinbox.setSingleStep(60)
+        self.db_write_interval_spinbox.setValue(
+            self.runtime_settings.db_write_interval_seconds
+        )
+        self.db_write_interval_spinbox.setSuffix(" sec")
+        self.db_write_interval_spinbox.setMinimumWidth(130)
+        self.db_write_interval_spinbox.setToolTip(
+            "How often scored frames are flushed to the database."
+        )
+        form.addRow("Write interval:", self.db_write_interval_spinbox)
+
+        layout.addWidget(card)
         layout.addWidget(
             self._help_label(
-                "Intervals define how often tracking restarts. "
-                "Set minutes to 0 for always-on continuous tracking."
+                "Logged data can be used to analyse posture trends over time. "
+                "Disable to reduce disk writes."
             )
         )
-        layout.addWidget(duration_group)
         layout.addStretch()
         return container
 
     def _create_advanced_page(self) -> QWidget:
-        container = QWidget()
-        container.setStyleSheet("background: #f0f2f5;")
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(12)
+        container, layout = self._page_container()
         layout.addWidget(self._page_header("advanced"))
 
-        core_group = QGroupBox("Detection Tuning")
-        core_form = self._make_form()
+        # ── Detection Tuning ──────────────────────────────────────────────────
+        tuning_card, tuning_form = self._make_card("Detection Tuning")
 
-        self.model_complexity_spinbox = QSpinBox()
-        self.model_complexity_spinbox.setRange(0, 2)
-        self.model_complexity_spinbox.setValue(self.ml_settings.model_complexity)
-        self.model_complexity_spinbox.setMinimumWidth(100)
-        self.model_complexity_spinbox.setToolTip("0 = Lite  ·  1 = Full  ·  2 = Heavy")
-        core_form.addRow("Model complexity (0–2):", self.model_complexity_spinbox)
+        self.model_complexity_combo = QComboBox()
+        self.model_complexity_combo.addItem("0 – Lite  (fastest, least accurate)", 0)
+        self.model_complexity_combo.addItem("1 – Full  (balanced)", 1)
+        self.model_complexity_combo.addItem("2 – Heavy  (most accurate, slowest)", 2)
+        idx = self.model_complexity_combo.findData(self.ml_settings.model_complexity)
+        self.model_complexity_combo.setCurrentIndex(max(0, idx))
+        self.model_complexity_combo.setMinimumWidth(260)
+        tuning_form.addRow("Model complexity:", self.model_complexity_combo)
 
         self.detection_confidence_spinbox = QDoubleSpinBox()
         self.detection_confidence_spinbox.setRange(0.0, 1.0)
@@ -675,7 +741,7 @@ class SettingsDialog(QDialog):
             self.ml_settings.min_detection_confidence
         )
         self.detection_confidence_spinbox.setMinimumWidth(110)
-        core_form.addRow("Min detection confidence:", self.detection_confidence_spinbox)
+        tuning_form.addRow("Min detection confidence:", self.detection_confidence_spinbox)
 
         self.tracking_confidence_spinbox = QDoubleSpinBox()
         self.tracking_confidence_spinbox.setRange(0.0, 1.0)
@@ -685,33 +751,40 @@ class SettingsDialog(QDialog):
             self.ml_settings.min_tracking_confidence
         )
         self.tracking_confidence_spinbox.setMinimumWidth(110)
-        core_form.addRow("Min tracking confidence:", self.tracking_confidence_spinbox)
+        tuning_form.addRow("Min tracking confidence:", self.tracking_confidence_spinbox)
 
         self.score_buffer_spinbox = QSpinBox()
         self.score_buffer_spinbox.setRange(10, 10000)
         self.score_buffer_spinbox.setValue(self.ml_settings.score_buffer_size)
         self.score_buffer_spinbox.setSuffix(" frames")
         self.score_buffer_spinbox.setMinimumWidth(140)
-        core_form.addRow("Score buffer size:", self.score_buffer_spinbox)
+        tuning_form.addRow("Score buffer size:", self.score_buffer_spinbox)
 
         self.score_window_spinbox = QSpinBox()
         self.score_window_spinbox.setRange(1, 100)
         self.score_window_spinbox.setValue(self.ml_settings.score_window_size)
         self.score_window_spinbox.setSuffix(" frames")
         self.score_window_spinbox.setMinimumWidth(140)
-        core_form.addRow("Score window size:", self.score_window_spinbox)
+        tuning_form.addRow("Score window size:", self.score_window_spinbox)
 
         self.score_threshold_spinbox = QSpinBox()
         self.score_threshold_spinbox.setRange(0, 100)
         self.score_threshold_spinbox.setValue(self.ml_settings.score_threshold)
         self.score_threshold_spinbox.setSuffix("%")
         self.score_threshold_spinbox.setMinimumWidth(100)
-        core_form.addRow("Score threshold:", self.score_threshold_spinbox)
+        tuning_form.addRow("Score threshold:", self.score_threshold_spinbox)
 
-        core_group.setLayout(core_form)
+        self.enable_gpu_checkbox = QCheckBox("Enable GPU acceleration (if available)")
+        self.enable_gpu_checkbox.setChecked(self.ml_settings.enable_gpu)
+        self.enable_gpu_checkbox.setToolTip(
+            "Passes enable_gpu=True to MediaPipe. Requires a compatible GPU and drivers."
+        )
+        tuning_form.addRow("GPU:", self.enable_gpu_checkbox)
 
-        thresholds_group = QGroupBox("Posture Thresholds")
-        thresholds_form = self._make_form()
+        layout.addWidget(tuning_card)
+
+        # ── Posture Thresholds ────────────────────────────────────────────────
+        thresholds_card, thresholds_form = self._make_card("Posture Thresholds")
         self.threshold_spinboxes: Dict[str, QDoubleSpinBox] = {}
         for key, value in self.ml_settings.posture_thresholds.items():
             spinbox = QDoubleSpinBox()
@@ -722,10 +795,10 @@ class SettingsDialog(QDialog):
             spinbox.setMinimumWidth(120)
             thresholds_form.addRow(f"{key.replace('_', ' ').title()}:", spinbox)
             self.threshold_spinboxes[key] = spinbox
-        thresholds_group.setLayout(thresholds_form)
+        layout.addWidget(thresholds_card)
 
-        weights_group = QGroupBox("Posture Weights")
-        weights_form = self._make_form()
+        # ── Posture Weights ───────────────────────────────────────────────────
+        weights_card, weights_form = self._make_card("Posture Weights")
         self.weight_spinboxes: List[QDoubleSpinBox] = []
         for index, weight in enumerate(self.ml_settings.posture_weights, start=1):
             spinbox = QDoubleSpinBox()
@@ -734,17 +807,27 @@ class SettingsDialog(QDialog):
             spinbox.setSingleStep(0.05)
             spinbox.setValue(float(weight))
             spinbox.setMinimumWidth(120)
+            spinbox.valueChanged.connect(self._update_weights_sum)
             weights_form.addRow(f"Weight {index}:", spinbox)
             self.weight_spinboxes.append(spinbox)
+        self.weights_sum_label = QLabel()
+        self.weights_sum_label.setObjectName("helpText")
+        self._update_weights_sum()
+        weights_form.addRow("Sum:", self.weights_sum_label)
         self.weights_error_label = self._error_label()
         weights_form.addRow("", self.weights_error_label)
-        weights_group.setLayout(weights_form)
+        layout.addWidget(weights_card)
 
-        layout.addWidget(core_group)
-        layout.addWidget(thresholds_group)
-        layout.addWidget(weights_group)
         layout.addStretch()
         return container
+
+    def _update_weights_sum(self) -> None:
+        total = sum(s.value() for s in self.weight_spinboxes)
+        color = "#16a34a" if 0.99 <= total <= 1.01 else "#d97706"
+        self.weights_sum_label.setText(
+            f'<span style="color:{color}; font-weight:600;">{total:.3f}</span>'
+            '  <span style="color:#9ca3af;">(ideally 1.000)</span>'
+        )
 
     # ── section visibility ────────────────────────────────────────────────────
 
@@ -902,6 +985,7 @@ class SettingsDialog(QDialog):
             default_fps=self.fps_spinbox.value(),
             frame_width=self.width_spinbox.value(),
             frame_height=self.height_spinbox.value(),
+            adaptive_resolution=self.adaptive_resolution_checkbox.isChecked(),
             notifications_enabled=self.notifications_enabled_checkbox.isChecked(),
             focus_mode_enabled=self.focus_mode_checkbox.isChecked(),
             notification_cooldown=self.cooldown_spinbox.value(),
@@ -913,12 +997,13 @@ class SettingsDialog(QDialog):
             tracking_duration_minutes=self.tracking_duration_spinbox.value(),
         )
         self._settings.update_ml(
-            model_complexity=self.model_complexity_spinbox.value(),
+            model_complexity=self.model_complexity_combo.currentData(),
             min_detection_confidence=self.detection_confidence_spinbox.value(),
             min_tracking_confidence=self.tracking_confidence_spinbox.value(),
             score_buffer_size=self.score_buffer_spinbox.value(),
             score_window_size=self.score_window_spinbox.value(),
             score_threshold=self.score_threshold_spinbox.value(),
+            enable_gpu=self.enable_gpu_checkbox.isChecked(),
             posture_thresholds={
                 k: s.value() for k, s in self.threshold_spinboxes.items()
             },
