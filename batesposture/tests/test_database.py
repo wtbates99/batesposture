@@ -1,11 +1,10 @@
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-
-from ..data.database import Database
+from ..data.database import Database, DatabaseInitializationError
 from ..services.settings_service import SettingsService
 
 
@@ -53,8 +52,29 @@ def test_save_pose_data(mock_datetime, db_manager):
     assert first_landmark[5] == 0.9  # visibility
 
 
-def test_default_db_path_uses_user_app_data_dir(tmp_path):
+def test_testing_db_path_uses_settings_directory(tmp_path):
     settings = SettingsService.for_testing(tmp_path / "path_settings.ini")
     db_path = Path(settings.resources.default_db_name)
     assert db_path.name == "posture_data.db"
-    assert db_path.parent.name == "BatesPosture"
+    assert db_path.parent == tmp_path
+
+
+def test_database_initialization_failure_has_stable_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "batesposture.data.database.sqlite3.connect",
+        MagicMock(side_effect=OSError("read-only filesystem")),
+    )
+
+    with pytest.raises(DatabaseInitializationError, match="Could not initialize"):
+        Database(str(tmp_path / "unavailable" / "posture.db"), [])
+
+
+def test_export_scores_csv_returns_empty_path_on_write_failure(db_manager, monkeypatch):
+    monkeypatch.setattr("builtins.open", MagicMock(side_effect=OSError("disk full")))
+
+    assert db_manager.export_scores_csv() == ""
+
+
+def test_close_is_idempotent(db_manager):
+    db_manager.close()
+    db_manager.close()

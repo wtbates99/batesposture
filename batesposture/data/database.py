@@ -4,10 +4,14 @@ import csv
 import logging
 import os
 import sqlite3
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Iterable, Optional
 
 logger = logging.getLogger(__name__)
+
+
+class DatabaseInitializationError(RuntimeError):
+    """Raised when the local posture database cannot be opened or initialized."""
 
 
 class Database:
@@ -29,19 +33,44 @@ class Database:
     """
 
     def __init__(self, db_path: str, landmark_names: Iterable[str]) -> None:
-        if db_path != ":memory:":
-            os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
-        self._conn.execute("PRAGMA journal_mode=WAL")  # faster concurrent writes
-        self._cursor = self._conn.cursor()
+        self._conn: sqlite3.Connection | None = None
+        self._cursor: sqlite3.Cursor | None = None
         self._landmark_names = list(landmark_names)
         self._pending_scores: list[tuple] = []
         self._pending_landmarks: list[tuple] = []
-        self._create_tables()
+        try:
+            if db_path != ":memory:":
+                os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+            self._conn = sqlite3.connect(db_path)
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._cursor = self._conn.cursor()
+            self._create_tables()
+        except (OSError, sqlite3.Error) as exc:
+            if self._conn is not None:
+                self._conn.close()
+            raise DatabaseInitializationError(
+                f"Could not initialize posture database at {db_path}: {exc}"
+            ) from exc
+
+    @classmethod
+    def from_settings(cls, settings) -> Database:
+        return cls(
+            settings.resources.default_db_name,
+            settings.get_posture_landmarks(),
+        )
+
+    def _connection(self) -> sqlite3.Connection:
+        if self._conn is None:
+            raise sqlite3.ProgrammingError("Database is closed")
+        return self._conn
+
+    def _active_cursor(self) -> sqlite3.Cursor:
+        if self._cursor is None:
+            raise sqlite3.ProgrammingError("Database is closed")
+        return self._cursor
 
     def _create_tables(self) -> None:
-        self._cursor.executescript(
-            """
+        self._active_cursor().executescript("""
             CREATE TABLE IF NOT EXISTS posture_scores (
                 timestamp DATETIME,
                 score FLOAT
@@ -64,11 +93,10 @@ class Database:
                 ts REAL PRIMARY KEY,
                 score REAL NOT NULL
             );
-            """
-        )
-        self._conn.commit()
+            """)
+        self._connection().commit()
 
-    def save_pose_data(self, landmarks, score: float) -> None:
+    def save_pose_data(self, landmarks, score: float) -> bool:
         timestamp = datetime.now().isoformat()
         self._pending_scores.append((timestamp, score))
 
@@ -78,40 +106,47 @@ class Database:
                 (timestamp, landmark_enum.name, lm.x, lm.y, lm.z, lm.visibility)
             )
 
-        self._flush()
+        return self._flush()
 
-    def _flush(self) -> None:
+    def _flush(self) -> bool:
         """Write all pending records in a single transaction."""
         if not self._pending_scores and not self._pending_landmarks:
-            return
+            return True
         try:
-            with self._conn:
+            connection = self._connection()
+            with connection:
                 if self._pending_scores:
-                    self._conn.executemany(
+                    connection.executemany(
                         "INSERT INTO posture_scores VALUES (?, ?)",
                         self._pending_scores,
                     )
                 if self._pending_landmarks:
-                    self._conn.executemany(
+                    connection.executemany(
                         "INSERT INTO pose_landmarks VALUES (?, ?, ?, ?, ?, ?)",
                         self._pending_landmarks,
                     )
             self._pending_scores.clear()
             self._pending_landmarks.clear()
+            return True
         except sqlite3.Error:
             logger.exception("Failed to flush posture data to database")
+            return False
 
-    def get_recent_stats(self, since_iso: str) -> Optional[dict]:
+    def get_recent_stats(self, since_iso: str) -> dict | None:
         """Return aggregate score stats since *since_iso* (ISO-format timestamp)."""
         try:
-            row = self._cursor.execute(
-                """
+            row = (
+                self._active_cursor()
+                .execute(
+                    """
                 SELECT COUNT(*), AVG(score), MIN(score), MAX(score)
                 FROM posture_scores
                 WHERE timestamp >= ?
                 """,
-                (since_iso,),
-            ).fetchone()
+                    (since_iso,),
+                )
+                .fetchone()
+            )
             if row and row[0]:
                 return {
                     "count": row[0],
@@ -123,7 +158,7 @@ class Database:
             logger.exception("Failed to query recent stats")
         return None
 
-    def export_scores_csv(self, since_iso: Optional[str] = None) -> str:
+    def export_scores_csv(self, since_iso: str | None = None) -> str:
         """Write posture scores to a timestamped CSV in the user's home directory.
 
         Returns the path to the created file.
@@ -137,7 +172,7 @@ class Database:
             params = (since_iso,)
         query += " ORDER BY timestamp"
         try:
-            rows = self._cursor.execute(query, params).fetchall()
+            rows = self._active_cursor().execute(query, params).fetchall()
             with open(out_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow(["timestamp", "score"])
@@ -153,8 +188,9 @@ class Database:
         if not scores:
             return
         try:
-            with self._conn:
-                self._conn.executemany(
+            connection = self._connection()
+            with connection:
+                connection.executemany(
                     "INSERT OR REPLACE INTO dashboard_history (ts, score) VALUES (?, ?)",
                     scores,
                 )
@@ -164,22 +200,30 @@ class Database:
     def load_dashboard_history(self, limit: int = 120) -> list[tuple[float, float]]:
         """Return the most recent *limit* (timestamp, score) pairs, oldest first."""
         try:
-            rows = self._cursor.execute(
-                "SELECT ts, score FROM dashboard_history ORDER BY ts DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+            rows = (
+                self._active_cursor()
+                .execute(
+                    "SELECT ts, score FROM dashboard_history ORDER BY ts DESC LIMIT ?",
+                    (limit,),
+                )
+                .fetchall()
+            )
             return list(reversed(rows))
         except sqlite3.Error:
             logger.exception("Failed to load dashboard history")
             return []
 
     def close(self) -> None:
+        if self._conn is None:
+            return
         self._flush()
         self._conn.close()
+        self._conn = None
+        self._cursor = None
 
     @property
     def cursor(self):
-        return self._cursor
+        return self._active_cursor()
 
     @property
     def landmark_enums(self):

@@ -4,10 +4,10 @@ import os
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QApplication
 
 from ..ml.pose_detector import PoseDetectionResult
 from ..services.settings_service import SettingsService
@@ -116,12 +116,6 @@ class DummyNotificationService:
         return None
 
 
-@pytest.fixture(scope="session")
-def qapp():
-    app = QApplication.instance() or QApplication([])
-    yield app
-
-
 def _build_tray(tmp_path, monkeypatch):
     monkeypatch.setattr(tray_module, "run_onboarding_if_needed", lambda settings: False)
     monkeypatch.setattr(tray_module, "create_score_icon", lambda score: QIcon())
@@ -175,6 +169,26 @@ def test_refresh_after_settings_change_syncs_database_logging(
         tray.hide()
 
 
+def test_database_open_failure_disables_logging(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    warning = MagicMock()
+    monkeypatch.setattr(tray_module.QMessageBox, "warning", warning)
+    database_factory = MagicMock()
+    database_factory.from_settings.side_effect = (
+        tray_module.DatabaseInitializationError("database unavailable")
+    )
+    monkeypatch.setattr(tray_module, "Database", database_factory)
+
+    settings.update_runtime(enable_database_logging=True)
+    tray._refresh_after_settings_change()
+
+    warning.assert_called_once()
+    assert tray._database is None
+    assert not settings.runtime.enable_database_logging
+    assert not tray.logging_toggle_action.isChecked()
+    assert not tray.export_action.isEnabled()
+
+
 def test_save_to_db_uses_elapsed_interval_for_scheduled_tracking():
     saved = []
     fake_db = SimpleNamespace(
@@ -211,6 +225,21 @@ def test_save_to_db_uses_elapsed_interval_for_scheduled_tracking():
         tray_module.PostureTrackerTray._save_to_db(fake_tray, 82.0, bundle)
 
     assert saved == [("pose-landmarks", 80.0), ("pose-landmarks", 82.0)]
+
+
+def test_failed_database_write_does_not_advance_save_cooldown():
+    fake_tray = SimpleNamespace(
+        _database=SimpleNamespace(save_pose_data=lambda pose, score: False),
+        _settings=SimpleNamespace(
+            runtime=SimpleNamespace(db_write_interval_seconds=300)
+        ),
+        last_db_save=None,
+    )
+    bundle = SimpleNamespace(pose_landmarks="pose-landmarks")
+
+    tray_module.PostureTrackerTray._save_to_db(fake_tray, 80.0, bundle)
+
+    assert fake_tray.last_db_save is None
 
 
 def test_tracking_pauses_after_human_absence_grace_period(qapp, tmp_path, monkeypatch):

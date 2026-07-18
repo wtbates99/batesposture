@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import threading
 from time import monotonic
-from typing import Optional
 
 import numpy as np
 
@@ -27,11 +26,11 @@ class ScoreService:
         self._is_full = False
         self._window_size = ml_settings.score_window_size
         self._threshold = ml_settings.score_threshold
-        self._session_start: Optional[float] = None
-        self._paused_since: Optional[float] = None
+        self._session_start: float | None = None
+        self._paused_since: float | None = None
         self._paused_duration_s: float = 0.0
         # Streak: consecutive seconds the rolling average has been above threshold
-        self._streak_start: Optional[float] = None
+        self._streak_start: float | None = None
         self._best_streak_s: float = 0.0
 
     @property
@@ -145,11 +144,11 @@ class ScoreService:
             paused += current_time - self._paused_since
         return max(0.0, current_time - self._session_start - paused)
 
-    def average(self, window_seconds: Optional[int] = None) -> float:
+    def average(self, window_seconds: int | None = None) -> float:
         with self._lock:
             return self._average_unsafe(window_seconds)
 
-    def _average_unsafe(self, window_seconds: Optional[int] = None) -> float:
+    def _average_unsafe(self, window_seconds: int | None = None) -> float:
         """Compute rolling average; must be called with self._lock held."""
         window = window_seconds or self._window_size
         current_time = monotonic()
@@ -169,7 +168,7 @@ class ScoreService:
         recent_s: int = 60,
         baseline_s: int = 60,
         baseline_offset_s: int = 240,
-    ) -> Optional[float]:
+    ) -> float | None:
         """Return points dropped between a baseline window and the most recent window.
 
         Compares the mean score over the last ``recent_s`` seconds against the

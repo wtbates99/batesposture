@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
-
-import cv2
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -31,215 +28,12 @@ from PyQt6.QtWidgets import (
 )
 
 from ..services.settings_service import SettingsService
-
-
-_STYLESHEET = """
-QDialog {
-    background: #f0f2f5;
-}
-
-/* ── Sidebar ───────────────────────────────────────────────── */
-QWidget#sidebar {
-    background: #1c2333;
-}
-QListWidget#navList {
-    background: transparent;
-    border: none;
-    outline: none;
-    padding: 10px 0;
-}
-QListWidget#navList::item {
-    color: #8892a4;
-    padding: 9px 12px;
-    border-radius: 6px;
-    margin: 1px 8px;
-    font-size: 13px;
-}
-QListWidget#navList::item:hover {
-    background: #252d3f;
-    color: #c8d0de;
-}
-QListWidget#navList::item:selected {
-    background: #2563eb;
-    color: #ffffff;
-}
-QCheckBox#advancedToggle {
-    color: #4b5567;
-    font-size: 11px;
-    padding: 8px 16px 12px 16px;
-    spacing: 6px;
-}
-QCheckBox#advancedToggle::indicator {
-    width: 13px;
-    height: 13px;
-    border: 1.5px solid #3a4458;
-    border-radius: 3px;
-    background: #252d3f;
-}
-QCheckBox#advancedToggle::indicator:checked {
-    background: #2563eb;
-    border-color: #2563eb;
-}
-
-/* ── Scroll area ───────────────────────────────────────────── */
-QScrollArea {
-    border: none;
-    background: transparent;
-}
-QScrollArea > QWidget > QWidget {
-    background: transparent;
-}
-
-/* ── Cards ─────────────────────────────────────────────────── */
-QFrame#card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-}
-QLabel#cardHeader {
-    font-weight: 600;
-    font-size: 12px;
-    color: #374151;
-    background: transparent;
-}
-QFrame#cardSep {
-    background: #f3f4f6;
-    border: none;
-    min-height: 1px;
-    max-height: 1px;
-}
-QWidget#cardBody {
-    background: transparent;
-}
-
-/* ── Labels ────────────────────────────────────────────────── */
-QLabel {
-    color: #374151;
-    font-size: 13px;
-    background: transparent;
-}
-QLabel#pageTitle {
-    font-size: 20px;
-    font-weight: 700;
-    color: #111827;
-}
-QLabel#pageSubtitle {
-    color: #6b7280;
-    font-size: 12px;
-}
-QLabel#helpText {
-    color: #9ca3af;
-    font-size: 11px;
-}
-QLabel#errorText {
-    color: #dc2626;
-    font-size: 11px;
-}
-QLabel#statusLabel {
-    color: #6b7280;
-    font-size: 11px;
-}
-
-/* ── Inputs ────────────────────────────────────────────────── */
-QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    padding: 5px 9px;
-    background: #ffffff;
-    color: #111827;
-    min-height: 30px;
-    font-size: 13px;
-    selection-background-color: #2563eb;
-    selection-color: #ffffff;
-}
-QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QLineEdit:focus {
-    border-color: #2563eb;
-}
-QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover, QLineEdit:hover {
-    border-color: #9ca3af;
-}
-QComboBox::drop-down { border: none; width: 20px; }
-QComboBox QAbstractItemView {
-    border: 1px solid #d1d5db;
-    selection-background-color: #eff6ff;
-    selection-color: #1e40af;
-    outline: none;
-    font-size: 13px;
-}
-
-QCheckBox {
-    color: #374151;
-    spacing: 8px;
-    font-size: 13px;
-    background: transparent;
-}
-QCheckBox::indicator {
-    width: 16px;
-    height: 16px;
-    border: 1.5px solid #d1d5db;
-    border-radius: 4px;
-    background: #ffffff;
-}
-QCheckBox::indicator:hover   { border-color: #2563eb; }
-QCheckBox::indicator:checked { background: #2563eb; border-color: #2563eb; }
-
-/* ── Buttons ───────────────────────────────────────────────── */
-QPushButton {
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    padding: 6px 14px;
-    background: #ffffff;
-    color: #374151;
-    font-size: 13px;
-    font-weight: 500;
-    min-height: 32px;
-}
-QPushButton:hover   { background: #f9fafb; border-color: #9ca3af; }
-QPushButton:pressed { background: #f3f4f6; }
-QPushButton#addBtn {
-    background: #2563eb;
-    color: #ffffff;
-    border-color: #2563eb;
-    min-width: 60px;
-}
-QPushButton#addBtn:hover   { background: #1d4ed8; border-color: #1d4ed8; }
-QPushButton#removeBtn      { color: #dc2626; border-color: #fca5a5; }
-QPushButton#removeBtn:hover { background: #fef2f2; border-color: #dc2626; }
-
-/* ── Table ─────────────────────────────────────────────────── */
-QTableWidget {
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    gridline-color: #f3f4f6;
-    background: #ffffff;
-    selection-background-color: #eff6ff;
-    selection-color: #1e40af;
-    outline: none;
-    font-size: 13px;
-    alternate-background-color: #f9fafb;
-}
-QTableWidget::item          { padding: 6px 10px; border: none; }
-QTableWidget::item:selected { background: #eff6ff; color: #1e40af; }
-QHeaderView::section {
-    background: #f9fafb;
-    color: #6b7280;
-    font-weight: 600;
-    font-size: 11px;
-    padding: 7px 10px;
-    border: none;
-    border-bottom: 1px solid #e5e7eb;
-}
-
-/* ── Bottom bar ────────────────────────────────────────────── */
-QFrame#bottomBar {
-    background: #f8f9fa;
-    border-top: 1px solid #e5e7eb;
-}
-"""
+from .theme import settings_stylesheet, theme_colors
 
 
 class SettingsDialog(QDialog):
     SECTION_DEFS = [
+        ("appearance", "Appearance", QStyle.StandardPixmap.SP_DesktopIcon),
         ("camera", "Camera & Video", QStyle.StandardPixmap.SP_ComputerIcon),
         (
             "notifications",
@@ -252,6 +46,7 @@ class SettingsDialog(QDialog):
     ]
 
     _PAGE_META = {
+        "appearance": ("Appearance", "Choose how BatesPosture fits your desktop."),
         "camera": (
             "Camera & Video",
             "Configure your camera source and capture resolution.",
@@ -266,23 +61,23 @@ class SettingsDialog(QDialog):
     }
 
     def __init__(
-        self, settings_service: SettingsService, parent: Optional[QWidget] = None
+        self, settings_service: SettingsService, parent: QWidget | None = None
     ) -> None:
         super().__init__(parent)
         self._settings = settings_service
         self.runtime_settings = settings_service.runtime
         self.ml_settings = settings_service.ml
         self.profile_settings = settings_service.profile
-        self.validation_errors: Dict[str, str] = {}
+        self.validation_errors: dict[str, str] = {}
 
-        self.setWindowTitle("Settings")
-        self.setMinimumSize(860, 600)
-        self.resize(920, 680)
-        self.setStyleSheet(_STYLESHEET)
+        self.setWindowTitle("BatesPosture Settings")
+        self.setMinimumSize(800, 560)
+        self.resize(960, 700)
+        self._apply_theme(self.profile_settings.preferred_theme)
 
         self.section_list = self._build_nav_list()
         self.section_stack = QStackedWidget()
-        self.section_key_to_index: Dict[str, int] = {}
+        self.section_key_to_index: dict[str, int] = {}
 
         for index, (key, _, _) in enumerate(self.SECTION_DEFS):
             self.section_stack.addWidget(self._build_section_widget(key))
@@ -299,12 +94,20 @@ class SettingsDialog(QDialog):
         sidebar_layout = QVBoxLayout()
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(0)
+        brand_name = QLabel("BatesPosture")
+        brand_name.setObjectName("brandName")
+        brand_name.setContentsMargins(16, 18, 16, 0)
+        brand_detail = QLabel("Posture monitor")
+        brand_detail.setObjectName("brandDetail")
+        brand_detail.setContentsMargins(16, 0, 16, 12)
+        sidebar_layout.addWidget(brand_name)
+        sidebar_layout.addWidget(brand_detail)
         sidebar_layout.addWidget(self.section_list, 1)
         sidebar_layout.addWidget(self.show_advanced_checkbox)
 
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(190)
+        sidebar.setFixedWidth(208)
         sidebar.setLayout(sidebar_layout)
 
         self._status_label = QLabel(self._status_text())
@@ -317,13 +120,7 @@ class SettingsDialog(QDialog):
         self.button_box.rejected.connect(self.reject)
         ok_btn = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
         ok_btn.setText("Save Settings")
-        ok_btn.setStyleSheet(
-            "background:#2563eb; color:#fff; border-color:#2563eb; min-width:110px;"
-            " padding:6px 16px;"
-        )
-        self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setStyleSheet(
-            "min-width:80px;"
-        )
+        ok_btn.setObjectName("primaryButton")
 
         bottom_bar = QFrame()
         bottom_bar.setObjectName("bottomBar")
@@ -336,7 +133,6 @@ class SettingsDialog(QDialog):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("color: #2a3345;")
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -379,6 +175,7 @@ class SettingsDialog(QDialog):
 
     def _build_section_widget(self, key: str) -> QWidget:
         builders = {
+            "appearance": self._create_appearance_page,
             "camera": self._create_camera_page,
             "notifications": self._create_notifications_page,
             "tracking": self._create_tracking_page,
@@ -390,7 +187,6 @@ class SettingsDialog(QDialog):
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidget(inner)
-        scroll.setStyleSheet("background: #f0f2f5;")
         return scroll
 
     def _page_header(self, key: str) -> QWidget:
@@ -401,9 +197,7 @@ class SettingsDialog(QDialog):
         sub.setObjectName("pageSubtitle")
         div = QFrame()
         div.setFrameShape(QFrame.Shape.HLine)
-        div.setStyleSheet("color: #e5e7eb; margin: 4px 0 8px 0;")
         w = QWidget()
-        w.setStyleSheet("background: transparent;")
         lay = QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
@@ -412,8 +206,7 @@ class SettingsDialog(QDialog):
         lay.addWidget(div)
         return w
 
-    def _make_card(self, title: str) -> Tuple[QFrame, QFormLayout]:
-        """Titled white card with a form body. Replaces QGroupBox to avoid title-overlap bugs."""
+    def _card_shell(self, title: str) -> tuple[QFrame, QWidget]:
         card = QFrame()
         card.setObjectName("card")
 
@@ -434,6 +227,11 @@ class SettingsDialog(QDialog):
 
         body = QWidget()
         body.setObjectName("cardBody")
+        vbox.addWidget(body)
+        return card, body
+
+    def _make_card(self, title: str) -> tuple[QFrame, QFormLayout]:
+        card, body = self._card_shell(title)
         form = QFormLayout(body)
         form.setLabelAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -442,37 +240,14 @@ class SettingsDialog(QDialog):
         form.setHorizontalSpacing(16)
         form.setVerticalSpacing(12)
         form.setContentsMargins(16, 14, 16, 16)
-        vbox.addWidget(body)
-
         return card, form
 
-    def _make_card_vbox(self, title: str) -> Tuple[QFrame, QVBoxLayout]:
+    def _make_card_vbox(self, title: str) -> tuple[QFrame, QVBoxLayout]:
         """Titled white card with a free-form VBox body (for tables, custom rows, etc.)."""
-        card = QFrame()
-        card.setObjectName("card")
-
-        vbox = QVBoxLayout(card)
-        vbox.setContentsMargins(0, 0, 0, 0)
-        vbox.setSpacing(0)
-
-        header = QLabel(title)
-        header.setObjectName("cardHeader")
-        header.setContentsMargins(16, 12, 16, 11)
-        vbox.addWidget(header)
-
-        sep = QFrame()
-        sep.setObjectName("cardSep")
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setFrameShadow(QFrame.Shadow.Plain)
-        vbox.addWidget(sep)
-
-        body = QWidget()
-        body.setObjectName("cardBody")
+        card, body = self._card_shell(title)
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(16, 14, 16, 16)
         body_layout.setSpacing(10)
-        vbox.addWidget(body)
-
         return card, body_layout
 
     def _help_label(self, text: str) -> QLabel:
@@ -488,15 +263,48 @@ class SettingsDialog(QDialog):
         label.setVisible(False)
         return label
 
-    def _page_container(self) -> Tuple[QWidget, QVBoxLayout]:
+    def _page_container(self) -> tuple[QWidget, QVBoxLayout]:
         container = QWidget()
-        container.setStyleSheet("background: #f0f2f5;")
         layout = QVBoxLayout(container)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(14)
         return container, layout
 
     # ── pages ─────────────────────────────────────────────────────────────────
+
+    def _create_appearance_page(self) -> QWidget:
+        container, layout = self._page_container()
+        layout.addWidget(self._page_header("appearance"))
+
+        card, form = self._make_card("Theme")
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem("Use system appearance", "system")
+        self.theme_combo.addItem("Light", "light")
+        self.theme_combo.addItem("Dark", "dark")
+        index = self.theme_combo.findData(self.profile_settings.preferred_theme)
+        self.theme_combo.setCurrentIndex(max(0, index))
+        self.theme_combo.currentIndexChanged.connect(
+            lambda: self._apply_theme(self.theme_combo.currentData())
+        )
+        form.addRow("Color theme:", self.theme_combo)
+
+        calibration = (
+            "Calibrated"
+            if self.profile_settings.has_completed_onboarding
+            else "Calibration required"
+        )
+        profile_status = QLabel(
+            f"{calibration} · baseline {self.profile_settings.baseline_posture_score:.0f}%"
+        )
+        profile_status.setObjectName("helpText")
+        form.addRow("Profile:", profile_status)
+
+        layout.addWidget(card)
+        layout.addStretch()
+        return container
+
+    def _apply_theme(self, preference: str) -> None:
+        self.setStyleSheet(settings_stylesheet(preference))
 
     def _create_camera_page(self) -> QWidget:
         container, layout = self._page_container()
@@ -541,7 +349,7 @@ class SettingsDialog(QDialog):
         res_row.setSpacing(8)
         res_row.addWidget(self.width_spinbox)
         x_lbl = QLabel("×")
-        x_lbl.setStyleSheet("color: #9ca3af; background: transparent;")
+        x_lbl.setObjectName("helpText")
         res_row.addWidget(x_lbl)
         res_row.addWidget(self.height_spinbox)
         res_row.addStretch()
@@ -776,18 +584,11 @@ class SettingsDialog(QDialog):
         self.score_threshold_spinbox.setMinimumWidth(100)
         tuning_form.addRow("Score threshold:", self.score_threshold_spinbox)
 
-        self.enable_gpu_checkbox = QCheckBox("Enable GPU acceleration (if available)")
-        self.enable_gpu_checkbox.setChecked(self.ml_settings.enable_gpu)
-        self.enable_gpu_checkbox.setToolTip(
-            "Passes enable_gpu=True to MediaPipe. Requires a compatible GPU and drivers."
-        )
-        tuning_form.addRow("GPU:", self.enable_gpu_checkbox)
-
         layout.addWidget(tuning_card)
 
         # ── Posture Thresholds ────────────────────────────────────────────────
         thresholds_card, thresholds_form = self._make_card("Posture Thresholds")
-        self.threshold_spinboxes: Dict[str, QDoubleSpinBox] = {}
+        self.threshold_spinboxes: dict[str, QDoubleSpinBox] = {}
         for key, value in self.ml_settings.posture_thresholds.items():
             spinbox = QDoubleSpinBox()
             spinbox.setDecimals(2)
@@ -801,7 +602,7 @@ class SettingsDialog(QDialog):
 
         # ── Posture Weights ───────────────────────────────────────────────────
         weights_card, weights_form = self._make_card("Posture Weights")
-        self.weight_spinboxes: List[QDoubleSpinBox] = []
+        self.weight_spinboxes: list[QDoubleSpinBox] = []
         for index, weight in enumerate(self.ml_settings.posture_weights, start=1):
             spinbox = QDoubleSpinBox()
             spinbox.setDecimals(3)
@@ -825,10 +626,11 @@ class SettingsDialog(QDialog):
 
     def _update_weights_sum(self) -> None:
         total = sum(s.value() for s in self.weight_spinboxes)
-        color = "#16a34a" if 0.99 <= total <= 1.01 else "#d97706"
+        colors = theme_colors(self.theme_combo.currentData())
+        color = colors.accent if 0.99 <= total <= 1.01 else colors.highlight
         self.weights_sum_label.setText(
             f'<span style="color:{color}; font-weight:600;">{total:.3f}</span>'
-            '  <span style="color:#9ca3af;">(ideally 1.000)</span>'
+            f'  <span style="color:{colors.muted};">(ideally 1.000)</span>'
         )
 
     # ── section visibility ────────────────────────────────────────────────────
@@ -879,13 +681,11 @@ class SettingsDialog(QDialog):
     # ── camera detection ──────────────────────────────────────────────────────
 
     def _available_cameras(self, max_index: int = 5):
-        available = []
-        for i in range(max_index):
-            cap = cv2.VideoCapture(i)
-            if cap.isOpened():
-                available.append((i, f"Camera {i}"))
-            cap.release()
-        return available
+        camera_ids = list(range(max_index))
+        current = self.runtime_settings.default_camera_id
+        if current not in camera_ids:
+            camera_ids.append(current)
+        return [(camera_id, f"Camera {camera_id}") for camera_id in camera_ids]
 
     # ── validation ────────────────────────────────────────────────────────────
 
@@ -918,8 +718,8 @@ class SettingsDialog(QDialog):
         self._clear_error("posture_message", self.posture_message_error)
         return True
 
-    def _collect_tracking_intervals(self) -> Dict[str, int]:
-        intervals: Dict[str, int] = {}
+    def _collect_tracking_intervals(self) -> dict[str, int]:
+        intervals: dict[str, int] = {}
         for row in range(self.tracking_table.rowCount()):
             label_item = self.tracking_table.item(row, 0)
             minutes_item = self.tracking_table.item(row, 1)
@@ -928,8 +728,10 @@ class SettingsDialog(QDialog):
                 raise ValueError("Each interval needs a label.")
             try:
                 minutes = int(minutes_item.text()) if minutes_item else 0
-            except (TypeError, ValueError):
-                raise ValueError(f"Minutes for '{label}' must be a whole number.")
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Minutes for '{label}' must be a whole number."
+                ) from exc
             if minutes < 0:
                 raise ValueError("Minutes cannot be negative.")
             intervals[label] = minutes
@@ -937,7 +739,7 @@ class SettingsDialog(QDialog):
             raise ValueError("Add at least one tracking interval.")
         return intervals
 
-    def _validate_tracking_intervals(self) -> Optional[Dict[str, int]]:
+    def _validate_tracking_intervals(self) -> dict[str, int] | None:
         try:
             intervals = self._collect_tracking_intervals()
         except ValueError as error:
@@ -960,7 +762,7 @@ class SettingsDialog(QDialog):
         self._clear_error("posture_weights", self.weights_error_label)
         return True
 
-    def _validate_all(self) -> Optional[Dict[str, int]]:
+    def _validate_all(self) -> dict[str, int] | None:
         message_valid = self._validate_posture_message()
         intervals = self._validate_tracking_intervals()
         weights_valid = self._validate_posture_weights()
@@ -1005,12 +807,11 @@ class SettingsDialog(QDialog):
             score_buffer_size=self.score_buffer_spinbox.value(),
             score_window_size=self.score_window_spinbox.value(),
             score_threshold=self.score_threshold_spinbox.value(),
-            enable_gpu=self.enable_gpu_checkbox.isChecked(),
             posture_thresholds={
                 k: s.value() for k, s in self.threshold_spinboxes.items()
             },
             posture_weights=[s.value() for s in self.weight_spinboxes],
         )
-        self._settings.save_all()
+        self._settings.update_profile(preferred_theme=self.theme_combo.currentData())
         self._status_label.setText(self._status_text())
         super().accept()

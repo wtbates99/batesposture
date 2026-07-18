@@ -4,11 +4,13 @@ import contextlib
 import logging
 import threading
 import time
+from collections.abc import Callable, Iterator
 from threading import Event, Thread
-from typing import Any, Callable, Iterator, Optional
+from typing import Any
 
 import cv2
 
+from .camera_capture import open_camera
 from .settings_service import SettingsService
 
 logger = logging.getLogger(__name__)
@@ -24,25 +26,25 @@ class CameraService:
         self._camera_id = settings.runtime.default_camera_id
         self._fps = settings.runtime.default_fps
         self._frame_time = 1 / max(self._fps, 1)
-        self._cap: Optional[cv2.VideoCapture] = None
+        self._cap: cv2.VideoCapture | None = None
         self._is_running = Event()
         self._paused = Event()
-        self._thread: Optional[Thread] = None
-        self._callback: Optional[FrameCallback] = None
+        self._thread: Thread | None = None
+        self._callback: FrameCallback | None = None
         self._latest_frame = None
         self._latest_score = 0.0
         self._latest_pose_results = None
         self._settings_lock = threading.Lock()
         self._processing_lock = threading.Lock()
 
-    def start(self, callback: Optional[FrameCallback] = None) -> bool:
+    def start(self, callback: FrameCallback | None = None) -> bool:
         if self._is_running.is_set():
             return False
         self._callback = callback
-        self._cap = cv2.VideoCapture(self._camera_id)
-        if not self._cap.isOpened():
-            logger.error("Failed to open camera %s", self._camera_id)
+        self._cap = open_camera(self._camera_id)
+        if self._cap is None:
             return False
+        self._paused.clear()
         self._is_running.set()
         self._thread = Thread(target=self._capture_loop, daemon=True)
         self._thread.start()
@@ -51,12 +53,17 @@ class CameraService:
 
     def stop(self) -> None:
         self._is_running.clear()
-        if self._thread and self._thread != threading.current_thread():
-            self._thread.join(timeout=2.0)
-        if self._cap:
-            self._cap.release()
+        thread = self._thread
+        capture = self._cap
+        if thread and thread != threading.current_thread():
+            thread.join(timeout=2.0)
+            if thread.is_alive():
+                logger.warning("Camera thread did not stop within 2 seconds")
+        if capture:
+            capture.release()
         self._cap = None
         self._thread = None
+        self._paused.clear()
         logger.info("Camera stopped")
 
     def reload_settings(self) -> None:
@@ -100,7 +107,7 @@ class CameraService:
                 time.sleep(0.01)
                 continue
 
-            start_time = time.time()
+            start_time = time.monotonic()
             try:
                 if self._cap is None:
                     break
@@ -133,7 +140,7 @@ class CameraService:
                 self.stop()
                 break
 
-            processing_time = time.time() - start_time
+            processing_time = time.monotonic() - start_time
             # _frame_time is a float; CPython's GIL makes this read atomic.
             # reload_settings() only runs while _paused is set (loop is idle),
             # so this never races with a live capture iteration.

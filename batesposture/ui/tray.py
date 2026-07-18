@@ -1,22 +1,20 @@
 from __future__ import annotations
 
-import json
 import logging
-from typing import Dict, Iterable, Mapping, Optional
 from datetime import datetime, timedelta
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QActionGroup, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
+    QDialog,
     QMenu,
     QMessageBox,
-    QSystemTrayIcon,
-    QDialog,
     QStyle,
+    QSystemTrayIcon,
 )
 
-from ..data.database import Database
+from ..data.database import Database, DatabaseInitializationError
 from ..ml.pose_detector import PoseDetectionResult, PoseDetector
 from ..services.camera_service import CameraService
 from ..services.notification_service import NotificationService
@@ -24,13 +22,12 @@ from ..services.score_service import ScoreService
 from ..services.settings_service import (
     BREAK_REMINDER_MINUTES,
     SettingsService,
-    _default_tracking_intervals,
 )
 from ..services.task_scheduler import TaskScheduler
 from .dashboard import PostureDashboard, score_grade
 from .onboarding import run_onboarding_if_needed
+from .score_icon import create_score_icon
 from .settings_dialog import SettingsDialog
-from ..util__create_score_icon import create_score_icon
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +56,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         score_service: ScoreService,
         notification_service: NotificationService,
         scheduler: TaskScheduler,
-        database: Optional[Database] = None,
+        database: Database | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -72,17 +69,17 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._database = database
 
         self.tracking_enabled = False
-        self.video_window: Optional[PostureDashboard] = None
+        self.video_window: PostureDashboard | None = None
         # Default to 30-minute intervals so the camera isn't running all day.
         # Users can switch to "Continuous (always on)" from the interval menu.
         self.tracking_interval = 30
-        self.last_tracking_time: Optional[datetime] = None
-        self.last_db_save: Optional[datetime] = None
-        self._continuous_tracking_start: Optional[datetime] = None
+        self.last_tracking_time: datetime | None = None
+        self.last_db_save: datetime | None = None
+        self._continuous_tracking_start: datetime | None = None
         self._break_reminder_sent = False
         self._last_icon_score: float = -1.0
         self._tracking_paused_for_absence = False
-        self._absence_started_at: Optional[datetime] = None
+        self._absence_started_at: datetime | None = None
 
         self._initialize_application()
         self._run_onboarding_if_needed()
@@ -102,8 +99,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.setToolTip("BatesPosture — idle")
 
     def _run_onboarding_if_needed(self) -> None:
-        if run_onboarding_if_needed(self._settings):
-            self._settings.save_all()
+        run_onboarding_if_needed(self._settings)
 
     def _setup_tray_menu(self) -> None:
         menu = QMenu()
@@ -114,17 +110,13 @@ class PostureTrackerTray(QSystemTrayIcon):
             "Start Tracking",
             self,
         )
-        self.toggle_tracking_action.setShortcut("Ctrl+Shift+T")
         self.toggle_tracking_action.triggered.connect(self.toggle_tracking)
-        self.toggle_tracking_action.setShortcutVisibleInContextMenu(True)
 
         self.toggle_dashboard_action = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_DesktopIcon),
             "Show Dashboard",
             self,
         )
-        self.toggle_dashboard_action.setShortcut("Ctrl+Shift+D")
-        self.toggle_dashboard_action.setShortcutVisibleInContextMenu(True)
         self.toggle_dashboard_action.triggered.connect(self.toggle_dashboard)
         self.toggle_dashboard_action.setEnabled(False)
 
@@ -181,8 +173,6 @@ class PostureTrackerTray(QSystemTrayIcon):
             "Settings",
             menu,
         )
-        self.settings_action.setShortcut("Ctrl+,")
-        self.settings_action.setShortcutVisibleInContextMenu(True)
         self.settings_action.triggered.connect(self.open_settings)
         menu.addAction(self.settings_action)
 
@@ -203,8 +193,6 @@ class PostureTrackerTray(QSystemTrayIcon):
             menu,
             triggered=self.quit_application,
         )
-        quit_action.setShortcut("Ctrl+Q")
-        quit_action.setShortcutVisibleInContextMenu(True)
         menu.addAction(quit_action)
 
         self.setContextMenu(menu)
@@ -215,9 +203,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         interval_group = QActionGroup(interval_menu)
         interval_group.setExclusive(True)
 
-        intervals = self._normalize_tracking_intervals(
-            self._settings.runtime.tracking_intervals
-        )
+        intervals = self._settings.runtime.tracking_intervals
         for label, minutes in intervals.items():
             action = QAction(label, interval_menu, checkable=True)
             action.setData(minutes)
@@ -231,80 +217,6 @@ class PostureTrackerTray(QSystemTrayIcon):
             if minutes == self.tracking_interval:
                 action.setChecked(True)
         return interval_menu
-
-    def _normalize_tracking_intervals(self, raw_intervals: object) -> Dict[str, int]:
-        normalized = self._coerce_interval_mapping(raw_intervals)
-        if not normalized:
-            normalized = dict(_default_tracking_intervals())
-
-        if normalized != raw_intervals:
-            self._settings.runtime.tracking_intervals = dict(normalized)
-            try:
-                self._settings.save_all()
-            except OSError as exc:
-                logger.warning(
-                    "Could not persist normalised tracking intervals: %s", exc
-                )
-        return normalized
-
-    def _coerce_interval_mapping(self, raw: object) -> Dict[str, int]:
-        if isinstance(raw, Mapping):
-            result: Dict[str, int] = {}
-            for label, value in raw.items():
-                minutes = self._coerce_interval_minutes(value)
-                if minutes is None:
-                    continue
-                result[str(label).strip()] = minutes
-            return result
-
-        if isinstance(raw, str):
-            parsed = self._parse_interval_string(raw)
-            if parsed:
-                return parsed
-            return {}
-
-        if isinstance(raw, Iterable):
-            result: Dict[str, int] = {}
-            for item in raw:
-                if isinstance(item, Mapping):
-                    result.update(self._coerce_interval_mapping(item))
-                    continue
-                if isinstance(item, (list, tuple)) and len(item) >= 2:
-                    label = str(item[0]).strip()
-                    minutes = self._coerce_interval_minutes(item[1])
-                    if minutes is not None:
-                        result[label] = minutes
-            return result
-
-        return {}
-
-    def _parse_interval_string(self, payload: str) -> Dict[str, int]:
-        payload = payload.strip()
-        if not payload:
-            return {}
-        try:
-            decoded = json.loads(payload)
-        except json.JSONDecodeError:
-            result: Dict[str, int] = {}
-            fragments = [frag for frag in payload.split(",") if frag.strip()]
-            for fragment in fragments:
-                separator = ":" if ":" in fragment else "="
-                if separator not in fragment:
-                    continue
-                label_part, minutes_part = fragment.split(separator, 1)
-                label = label_part.strip().strip("\"'")
-                minutes = self._coerce_interval_minutes(minutes_part)
-                if minutes is not None:
-                    result[label] = minutes
-            return result
-        else:
-            return self._coerce_interval_mapping(decoded)
-
-    def _coerce_interval_minutes(self, value: object) -> Optional[int]:
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
 
     def _setup_signal_handling(self) -> None:
         import signal
@@ -323,6 +235,12 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _start_tracking(self) -> None:
         started = self._camera_service.start(self._detector.process_frame)
         if not started:
+            self.showMessage(
+                "Camera unavailable",
+                "BatesPosture could not access the selected camera. Check camera permissions and Settings.",
+                QSystemTrayIcon.MessageIcon.Warning,
+                5000,
+            )
             return
         self._scores.reset_session()
         self.tracking_enabled = True
@@ -372,7 +290,14 @@ class PostureTrackerTray(QSystemTrayIcon):
             )
             self.video_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
             self.video_window.destroyed.connect(self._on_dashboard_closed)
-            self.video_window.resize(720, 560)
+            screen = QApplication.primaryScreen()
+            if screen:
+                available = screen.availableGeometry()
+                width = min(780, max(620, int(available.width() * 0.78)))
+                height = min(680, max(560, int(available.height() * 0.82)))
+                self.video_window.resize(width, height)
+            else:
+                self.video_window.resize(720, 600)
             self.video_window.show()
             self.toggle_dashboard_action.setText("Hide Dashboard")
 
@@ -413,7 +338,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.setIcon(create_score_icon(average_score))
             self._last_icon_score = average_score
 
-        metrics: Optional[Dict[str, float]] = results_bundle.metrics
+        metrics: dict[str, float] | None = results_bundle.metrics
 
         if self._database and self._settings.runtime.enable_database_logging:
             self._save_to_db(average_score, results_bundle)
@@ -541,7 +466,7 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _save_to_db(
         self,
         average_score: float,
-        results_bundle: Optional[PoseDetectionResult],
+        results_bundle: PoseDetectionResult | None,
     ) -> None:
         if not self._database:
             return
@@ -557,8 +482,9 @@ class PostureTrackerTray(QSystemTrayIcon):
             return
         pose_results = results_bundle.pose_landmarks
         if pose_results:
-            self._database.save_pose_data(pose_results, average_score)
-            self.last_db_save = current_time
+            saved = self._database.save_pose_data(pose_results, average_score)
+            if saved is not False:
+                self.last_db_save = current_time
 
     def _export_csv(self) -> None:
         if not self._database:
@@ -583,18 +509,15 @@ class PostureTrackerTray(QSystemTrayIcon):
     # ------------------------
     def _toggle_notifications(self, checked: bool) -> None:
         self._settings.update_runtime(notifications_enabled=checked)
-        self._settings.save_all()
         self._set_notification_label(checked)
 
     def _toggle_logging(self, checked: bool) -> None:
         self._settings.update_runtime(enable_database_logging=checked)
-        self._settings.save_all()
         self._set_logging_label(checked)
         self._sync_database_logging_state()
 
     def _toggle_focus_mode(self, checked: bool) -> None:
         self._settings.update_runtime(focus_mode_enabled=checked)
-        self._settings.save_all()
         self._set_focus_label(checked)
 
     def _set_notification_label(self, enabled: bool) -> None:
@@ -642,10 +565,21 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.export_action.setEnabled(enabled)
         if enabled:
             if self._database is None:
-                self._database = Database(
-                    self._settings.resources.default_db_name,
-                    self._settings.get_posture_landmarks(),
-                )
+                try:
+                    self._database = Database.from_settings(self._settings)
+                except DatabaseInitializationError as exc:
+                    logger.exception("Database logging could not be enabled")
+                    self._settings.update_runtime(enable_database_logging=False)
+                    self.logging_toggle_action.setChecked(False)
+                    self._set_logging_label(False)
+                    self.export_action.setEnabled(False)
+                    QMessageBox.warning(
+                        None,
+                        "Database logging unavailable",
+                        "Posture tracking will continue without database logging.\n\n"
+                        f"{exc}",
+                    )
+                    return
             self.last_db_save = None
             return
         if self._database:

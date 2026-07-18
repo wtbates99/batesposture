@@ -20,7 +20,6 @@
 import argparse
 import re
 import sys
-import typing
 from pathlib import Path
 
 COMMIT_TYPES = {
@@ -36,22 +35,48 @@ COMMIT_TYPES = {
     "style",
     "test",
 }
+COMMIT_PATTERN = re.compile(r"^([a-z]+)(?:\(([^\)]*)\))?!?: (.+)$")
+COMPONENT_PATTERN = re.compile(r"^[a-zA-Z0-9_/\-\.]+$")
 
 
-def matches_commit_format(root: Path, title: str) -> typing.List[str]:
+def _validate_components(root: Path, components: str | None) -> list[str]:
+    if components is None:
+        return []
+    if not components.strip():
+        return ["Invalid components: must not be empty"]
+
+    reasons = []
+    for component in components.split(","):
+        if component != component.strip():
+            reasons.append(
+                f"Invalid component: must have no trailing space: {component}"
+            )
+        elif not COMPONENT_PATTERN.fullmatch(component):
+            reasons.append(
+                f"Invalid component: must be alphanumeric plus [.-/]: {component}"
+            )
+        elif component != "format" and not (root / component).exists():
+            reasons.append(
+                f"Invalid component: must reference a file or directory: {component}"
+            )
+    return reasons
+
+
+def _validate_subject(subject: str) -> list[str]:
+    reasons = []
+    if subject.strip() != subject:
+        reasons.append(f"Invalid subject: must have no trailing space: {subject}")
+    if subject.strip().endswith("."):
+        reasons.append(f"Invalid subject: must not end in a period: {subject}")
+    return reasons
+
+
+def matches_commit_format(root: Path, title: str) -> list[str]:
     """Check a title and return a list of reasons why it's invalid."""
     if not root.is_dir():
         return [f"Invalid root: must be a directory: {root}"]
 
-    # Relax the initial regex a bit, do more friendly validation below
-    commit_type = "([a-z]+)"
-    scope = r"(?:\(([^\)]*)\))?"
-    delimiter = "!?:"
-    subject = " (.+)"
-    commit = re.compile(f"^{commit_type}{scope}{delimiter}{subject}$")
-    valid_component = re.compile(r"^[a-zA-Z0-9_/\-\.]+$")
-
-    m = commit.match(title)
+    m = COMMIT_PATTERN.match(title)
     if m is None:
         return [
             "Format is incorrect, see https://www.conventionalcommits.org/en/v1.0.0/"
@@ -62,34 +87,8 @@ def matches_commit_format(root: Path, title: str) -> typing.List[str]:
     if commit_type not in COMMIT_TYPES:
         reasons.append(f"Invalid commit type: {commit_type}")
 
-    components = m.group(2)
-    if components is not None:
-        if not components.strip():
-            reasons.append("Invalid components: must not be empty")
-        else:
-            components = components.split(",")
-            for component in components:
-                if component != component.strip():
-                    reasons.append(
-                        f"Invalid component: must have no trailing space: {component}"
-                    )
-                elif not valid_component.match(component):
-                    reasons.append(
-                        "Invalid component: must be alphanumeric "
-                        f"plus [.-/]: {component}"
-                    )
-                elif component != "format" and not Path(component).exists():
-                    reasons.append(
-                        "Invalid component: must reference a file "
-                        f"or directory in the repo: {component}"
-                    )
-
-    subject = m.group(3)
-    if subject.strip() != subject:
-        reasons.append(f"Invalid subject: must have no trailing space: {subject}")
-    if subject.strip().endswith("."):
-        reasons.append(f"Invalid subject: must not end in a period: {subject}")
-
+    reasons.extend(_validate_components(root, m.group(2)))
+    reasons.extend(_validate_subject(m.group(3)))
     return reasons
 
 

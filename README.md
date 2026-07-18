@@ -38,7 +38,7 @@ It's free, open source, and the entire pipeline runs on-device. Nothing leaves y
 | 🔔 **Smart alerts** | Native OS notifications with threshold + cooldown + focus mode |
 | ⏱️ **Scheduling** | Continuous or interval tracking, plus 50-min break reminders |
 | 💾 **Local logging** | Optional SQLite + CSV export, all on your machine |
-| ⚡ **Adaptive perf** | Auto-downscales on slow hardware, optional GPU mode |
+| ⚡ **Adaptive performance** | Auto-downscales on slower hardware |
 | 👤 **Auto-pause** | Stops counting away-from-desk time after ~2s no-detection |
 | 🔒 **100% local** | No cloud, no accounts, no telemetry, ever |
 
@@ -49,7 +49,7 @@ Requires [Python 3.10+](https://www.python.org/) and [uv](https://github.com/ast
 ```bash
 git clone https://github.com/wtbates99/batesposture.git
 cd batesposture
-uv sync --all-groups
+uv sync --locked --all-groups
 uv run batesposture
 ```
 
@@ -77,8 +77,6 @@ GNOME users may need the [AppIndicator extension](https://extensions.gnome.org/e
 3. **Alert** — score drops below your threshold → native desktop notification (with cooldown to prevent fatigue).
 4. **Review** — open the dashboard for the live frame, score sparkline, session stats, and streaks.
 
-**Shortcuts:** `Ctrl+Shift+T` start/stop · `Ctrl+Shift+D` dashboard · `Ctrl+,` settings · `Ctrl+Q` quit
-
 ## Configuration
 
 Settings cover camera, notifications, tracking schedule, and advanced scoring controls. Anything in the UI can also be set via `POSTURE_<SECTION>_<FIELD>` env vars at launch:
@@ -87,10 +85,9 @@ Settings cover camera, notifications, tracking schedule, and advanced scoring co
 POSTURE_RUNTIME_DEFAULT_CAMERA_ID=1 uv run batesposture     # use a different camera
 POSTURE_RUNTIME_DEFAULT_FPS=15 uv run batesposture          # reduce camera load
 POSTURE_RUNTIME_POOR_POSTURE_THRESHOLD=55 uv run batesposture
-POSTURE_ML_ENABLE_GPU=true uv run batesposture              # GPU mode
 ```
 
-Full mapping: `KEY_TO_SECTION_FIELD` in `batesposture/services/settings_service.py`.
+Environment names follow `POSTURE_<SECTION>_<FIELD>` for runtime, ML, and profile settings.
 
 <details>
 <summary><b>Default tuning values</b></summary>
@@ -125,27 +122,20 @@ Full mapping: `KEY_TO_SECTION_FIELD` in `batesposture/services/settings_service.
 
 **Does it work on macOS / Windows / Linux?** Yes — all three. Requires a webcam and Python 3.10+.
 
-**Does it slow down my computer?** Adaptive resolution + optional GPU mode keep it light. Drop `POSTURE_RUNTIME_DEFAULT_FPS=15` for older hardware.
+**Does it slow down my computer?** Adaptive resolution keeps processing manageable. Drop `POSTURE_RUNTIME_DEFAULT_FPS=15` for older hardware.
 
 **Will it nag me constantly?** No. Notifications have a configurable cooldown, focus mode silences them entirely, and the score only fires alerts below your threshold.
 
 **Can I export my data?** Yes — local SQLite + CSV export when logging is enabled.
 
-**Why not a packaged installer?** Source is the only distribution. `uv sync && uv run batesposture` is faster than installing a .dmg/.msi anyway.
+**Are packaged installers available?** Not yet. The current release runs from source with `uv sync --locked && uv run batesposture`.
 
 ## Development
 
 ```bash
-uv sync --all-groups
+uv sync --locked --all-groups
 QT_QPA_PLATFORM=offscreen uv run python -m pytest
 uv run pre-commit run --all-files
-```
-
-Marketing site source is in `web/`. Preview locally:
-
-```bash
-docker build -t batesposture-site .
-docker run --rm -p 8080:80 batesposture-site
 ```
 
 ## Troubleshooting
@@ -187,7 +177,7 @@ Issues and PRs welcome. If you change runtime behavior, update tests and keep th
 
 <div align="center">
 
-**[posture.palanbates.com](https://posture.palanbates.com)** · MIT-style license · Built by [@wtbates99](https://github.com/wtbates99)
+**[posture.palanbates.com](https://posture.palanbates.com)** · AGPL-3.0 license · Built by [@wtbates99](https://github.com/wtbates99)
 
 If BatesPosture saves your neck, ⭐ the repo — that's how more people find it.
 

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="BatesPosture">
+  <rect width="512" height="512" rx="112" fill="#202923"/>
+  <circle cx="256" cy="116" r="48" fill="none" stroke="#d2a64f" stroke-width="22"/>
+  <path d="M132 260c42-40 82-55 124-20 42-35 82-20 124 20" fill="none" stroke="#65bd7d" stroke-width="28" stroke-linecap="round"/>
+  <path d="M256 180v220" fill="none" stroke="#d2a64f" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="256" cy="236" r="12" fill="#f1f5f2"/>
+  <circle cx="256" cy="292" r="12" fill="#f1f5f2"/>
+  <circle cx="256" cy="348" r="12" fill="#f1f5f2"/>
+  <path d="M194 408h124" fill="none" stroke="#65bd7d" stroke-width="24" stroke-linecap="round"/>
+</svg>

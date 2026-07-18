@@ -12,7 +12,6 @@ from ..services.settings_service import SettingsService
 def settings_service(tmp_path):
     service = SettingsService.for_testing(tmp_path / "settings.ini")
     service.update_runtime(notifications_enabled=True, focus_mode_enabled=False)
-    service.save_all()
     return service
 
 

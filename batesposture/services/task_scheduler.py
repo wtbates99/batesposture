@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Dict
+from collections.abc import Callable
 
 from PyQt6.QtCore import QObject, QTimer
 
@@ -10,7 +10,7 @@ class TaskScheduler(QObject):
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._timers: Dict[str, QTimer] = {}
+        self._timers: dict[str, QTimer] = {}
 
     def schedule(
         self, name: str, interval_ms: int, callback: Callable[[], None]

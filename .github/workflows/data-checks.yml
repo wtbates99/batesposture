@@ -26,10 +26,26 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --all-groups
+        run: uv sync --locked --all-groups
 
-      - name: Run pre-commit
-        run: uv run pre-commit run --all-files
+      - name: Run static checks
+        run: |
+          uv run ruff check .
+          uv run black --check .
+          uv run pre-commit run --all-files
+
+      - name: Build wheel
+        run: uv build --wheel --out-dir dist
+
+      - name: Verify packaged application resources
+        run: >-
+          uv run python -c "import glob, zipfile;
+          wheel = glob.glob('dist/*.whl')[0];
+          names = set(zipfile.ZipFile(wheel).namelist());
+          required = {'batesposture/static/icon.png', 'batesposture/static/icon.ico',
+          'batesposture/static/icon.svg'};
+          missing = required - names;
+          assert not missing, f'Missing wheel resources: {sorted(missing)}'"
 
       - name: Check PR title
         if: github.event_name == 'pull_request'
@@ -69,7 +85,7 @@ jobs:
             libxcb-xfixes0 libxkbcommon-x11-0 libegl1
 
       - name: Install dependencies
-        run: uv sync --all-groups
+        run: uv sync --locked --all-groups
 
       - name: Verify launch imports
         env:

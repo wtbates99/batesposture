@@ -8,12 +8,15 @@ version = "1.1.2"
 description = "Discreet system-tray posture monitor powered by MediaPipe and OpenCV."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "AGPL-3.0-only" }
 keywords = ["posture", "mediapipe", "opencv", "system-tray", "webcam"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Operating System :: OS Independent",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Environment :: X11 Applications :: Qt",
     "Topic :: Utilities",
 ]
@@ -39,9 +42,29 @@ packages = ["batesposture"]
 
 [dependency-groups]
 dev = [
-    "pre-commit>=4.3.0",
+    "black>=26.5.1",
+    "pre-commit>=4.6.0",
     "pytest>=8.4.1",
+    "ruff>=0.15.22",
 ]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"batesposture/main.py" = ["I001"]
+"batesposture/services/settings_service.py" = ["I001"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -52,4 +75,4 @@ filterwarnings = [
 # Run the app:   uv run batesposture  (after pip install -e .)
 #            or: uv run python -m batesposture
 # Run tests:     uv run --group dev python -m pytest
-# Install deps:  uv sync --all-groups
+# Install deps:  uv sync --locked --all-groups

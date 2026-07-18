@@ -1,4 +1,5 @@
 """Integration tests for the camera → scoring → notification pipeline."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -13,7 +14,6 @@ from ..services.settings_service import (
     SettingsService,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -23,7 +23,6 @@ from ..services.settings_service import (
 def settings(tmp_path):
     svc = SettingsService.for_testing(tmp_path / "settings.ini")
     svc.update_runtime(notifications_enabled=True, focus_mode_enabled=False)
-    svc.save_all()
     return svc
 
 

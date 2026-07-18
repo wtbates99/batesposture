@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import deque
-from typing import Dict, List, Optional
 
 import cv2
 from PyQt6.QtCore import Qt
@@ -12,17 +11,18 @@ from PyQt6.QtGui import (
     QPainterPath,
     QPen,
     QPixmap,
-    QPalette,
 )
 from PyQt6.QtWidgets import (
+    QDialog,
+    QGridLayout,
+    QHBoxLayout,
     QLabel,
     QSizePolicy,
     QVBoxLayout,
-    QHBoxLayout,
-    QDialog,
-    QFrame,
     QWidget,
 )
+
+from .theme import dashboard_stylesheet, theme_colors
 
 
 def _score_color(score: float) -> QColor:
@@ -68,12 +68,12 @@ class SparklineWidget(QWidget):
     history when the dashboard reopens, so the chart isn't blank after a restart.
     """
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.values: List[float] = []
+        self.values: list[float] = []
         self.fill_color = QColor(46, 125, 255, 60)
         self.background_color = QColor("#ffffff")
-        self.setMinimumHeight(70)
+        self.setMinimumHeight(54)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def set_colors(self, _line: QColor, fill: QColor, background: QColor) -> None:
@@ -81,7 +81,7 @@ class SparklineWidget(QWidget):
         self.background_color = background
         self.update()
 
-    def update_values(self, values: List[float]) -> None:
+    def update_values(self, values: list[float]) -> None:
         self.values = values
         self.update()
 
@@ -139,10 +139,13 @@ class SparklineWidget(QWidget):
 class _StatLabel(QLabel):
     """Compact card-style label for a single statistic."""
 
-    def __init__(self, title: str, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._title = title
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setObjectName("statCard")
+        self.setMinimumHeight(54)
+        self.setWordWrap(True)
         self._update_text("—")
 
     def set_value(self, value: str) -> None:
@@ -161,30 +164,47 @@ class PostureDashboard(QDialog):
         preferred_theme: str,
         baseline_neck_angle: float = 10.0,
         baseline_shoulder_level: float = 0.05,
-        history: Optional[List[float]] = None,
-        parent: Optional[QWidget] = None,
+        history: list[float] | None = None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Posture Dashboard")
+        self.setWindowTitle("BatesPosture · Live Dashboard")
+        self.setMinimumSize(620, 560)
         self.recent_scores: deque[float] = deque(maxlen=120)
         if history:
             self.recent_scores.extend(history)
         self.baseline_score = baseline_score
         self.baseline_neck_angle = baseline_neck_angle
         self.baseline_shoulder_level = baseline_shoulder_level
+        self._theme_preference = preferred_theme
 
         outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(12, 12, 12, 12)
-        self.card = QFrame()
-        self.card.setObjectName("dashboardCard")
-        card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(20, 20, 20, 20)
-        card_layout.setSpacing(12)
+        outer_layout.setContentsMargins(20, 18, 20, 20)
+        outer_layout.setSpacing(14)
+
+        header = QWidget()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        title_column = QVBoxLayout()
+        title_column.setSpacing(1)
+        title = QLabel(self.tr("Live posture"))
+        title.setObjectName("dashboardTitle")
+        subtitle = QLabel(self.tr("Session in progress"))
+        subtitle.setObjectName("dashboardSubtitle")
+        title_column.addWidget(title)
+        title_column.addWidget(subtitle)
+        header_layout.addLayout(title_column)
+        header_layout.addStretch()
+        self.score_label = QLabel("—")
+        self.score_label.setObjectName("liveScore")
+        self.score_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        header_layout.addWidget(self.score_label)
 
         # Video feed
         self.video_label = QLabel(self.tr("Waiting for frames…"))
+        self.video_label.setObjectName("videoFeed")
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.video_label.setMinimumSize(560, 320)
+        self.video_label.setMinimumSize(320, 180)
         self.video_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -194,97 +214,50 @@ class PostureDashboard(QDialog):
 
         # Stats row
         stats_row = QWidget()
-        stats_layout = QHBoxLayout(stats_row)
+        stats_layout = QGridLayout(stats_row)
         stats_layout.setContentsMargins(0, 0, 0, 0)
-        stats_layout.setSpacing(6)
+        stats_layout.setHorizontalSpacing(8)
+        stats_layout.setVerticalSpacing(8)
         self._stat_current = _StatLabel(self.tr("Current"))
         self._stat_avg = _StatLabel(self.tr("Session Avg"))
         self._stat_min = _StatLabel(self.tr("Session Min"))
         self._stat_max = _StatLabel(self.tr("Session Max"))
         self._stat_streak = _StatLabel(self.tr("Best Streak"))
         self._stat_duration = _StatLabel(self.tr("Duration"))
-        for stat in (
-            self._stat_current,
-            self._stat_avg,
-            self._stat_min,
-            self._stat_max,
-            self._stat_streak,
-            self._stat_duration,
+        for index, stat in enumerate(
+            (
+                self._stat_current,
+                self._stat_avg,
+                self._stat_min,
+                self._stat_max,
+                self._stat_streak,
+                self._stat_duration,
+            )
         ):
-            stats_layout.addWidget(stat)
+            stats_layout.addWidget(stat, index // 3, index % 3)
 
         # Coaching / alert text
         self.feedback_label = QLabel(
             self.tr("Settle into a neutral posture while we gather readings.")
         )
+        self.feedback_label.setObjectName("feedback")
         self.feedback_label.setWordWrap(True)
 
-        card_layout.addWidget(self.video_label)
-        card_layout.addWidget(self.sparkline)
-        card_layout.addWidget(stats_row)
-        card_layout.addWidget(self.feedback_label)
-
-        outer_layout.addWidget(self.card)
+        outer_layout.addWidget(header)
+        outer_layout.addWidget(self.video_label, 1)
+        outer_layout.addWidget(self.sparkline)
+        outer_layout.addWidget(stats_row)
+        outer_layout.addWidget(self.feedback_label)
         self._apply_theme(preferred_theme)
 
     def _apply_theme(self, preference: str) -> None:
-        palette = self.palette()
-        if preference == "dark":
-            is_dark = True
-        elif preference == "light":
-            is_dark = False
-        else:
-            window_color = palette.color(QPalette.ColorRole.Window)
-            luminance = (
-                0.299 * window_color.red()
-                + 0.587 * window_color.green()
-                + 0.114 * window_color.blue()
-            )
-            is_dark = luminance < 128
+        colors = theme_colors(preference)
+        self.setStyleSheet(dashboard_stylesheet(preference))
+        accent = QColor(colors.accent)
+        fill = QColor(accent.red(), accent.green(), accent.blue(), 55)
+        self.sparkline.set_colors(accent, fill, QColor(colors.canvas))
 
-        if is_dark:
-            background = QColor("#202124")
-            foreground = QColor("#f1f3f4")
-            accent = QColor("#8ab4f8")
-            fill = QColor(138, 180, 248, 60)
-            stat_bg = "#2d2f33"
-            stat_border = "rgba(255,255,255,12)"
-        else:
-            background = QColor("#ffffff")
-            foreground = QColor("#1a1c23")
-            accent = QColor("#2e7dff")
-            fill = QColor(46, 125, 255, 60)
-            stat_bg = "#f8f9fa"
-            stat_border = "rgba(0,0,0,10)"
-
-        self.setStyleSheet(f"QDialog {{ background-color: {background.name()}; }}")
-        self.card.setStyleSheet(
-            f"QFrame#dashboardCard {{"
-            f"  background-color: {background.name()};"
-            f"  border-radius: 12px;"
-            f"  border: 1px solid rgba(0,0,0,25);"
-            f"}}"
-            f"QLabel {{ color: {foreground.name()}; }}"
-        )
-        self.feedback_label.setStyleSheet(
-            f"color: {foreground.name()}; font-weight: 600; font-size: 13px;"
-        )
-        stat_style = (
-            f"background: {stat_bg}; color: {foreground.name()}; font-size: 11px;"
-            f"border: 1px solid {stat_border}; border-radius: 8px; padding: 6px 8px;"
-        )
-        for stat in (
-            self._stat_current,
-            self._stat_avg,
-            self._stat_min,
-            self._stat_max,
-            self._stat_streak,
-            self._stat_duration,
-        ):
-            stat.setStyleSheet(stat_style)
-        self.sparkline.set_colors(accent, fill, background)
-
-    def get_history(self) -> List[float]:
+    def get_history(self) -> list[float]:
         """Return current sparkline scores for persistence."""
         return list(self.recent_scores)
 
@@ -306,17 +279,19 @@ class PostureDashboard(QDialog):
     def update_score(
         self,
         score: float,
-        metrics: Optional[Dict[str, float]] = None,
-        session_stats: Optional[dict] = None,
+        metrics: dict[str, float] | None = None,
+        session_stats: dict | None = None,
     ) -> None:
         self.recent_scores.append(score)
         self.sparkline.update_values(list(self.recent_scores))
         self._update_feedback_text(score, metrics)
         self._update_stats(score, session_stats)
 
-    def _update_stats(self, current: float, stats: Optional[dict]) -> None:
+    def _update_stats(self, current: float, stats: dict | None) -> None:
         grade = score_grade(current)
         color = _score_color(current).name()
+        self.score_label.setText(f"{current:.0f}%")
+        self.score_label.setStyleSheet(f"color: {color};")
         self._stat_current.set_value(
             f"<span style='color:{color}'>{current:.0f}</span> <small>({grade})</small>"
         )
@@ -345,14 +320,14 @@ class PostureDashboard(QDialog):
                 stat.set_value("—")
 
     def _update_feedback_text(
-        self, score: float, metrics: Optional[Dict[str, float]]
+        self, score: float, metrics: dict[str, float] | None
     ) -> None:
         if score >= max(self.baseline_score - 5, 70):
             message = self.tr(
                 "Nice alignment! Keep a relaxed breath and soft shoulders."
             )
         else:
-            cues: List[str] = []
+            cues: list[str] = []
             if metrics:
                 neck_threshold = self.baseline_neck_angle + 5.0
                 shoulder_threshold = self.baseline_shoulder_level + 0.02

@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 
 import batesposture
+
 from .. import main as main_module
 
 

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from .data.database import Database
+from .data.database import Database, DatabaseInitializationError
 from .ml.pose_detector import PoseDetector
 from .services.camera_service import CameraService
 from .services.notification_service import NotificationService
@@ -42,12 +41,19 @@ class ApplicationFacade:
         self.notification_service = NotificationService(
             self.settings, self.settings.resources.icon_path
         )
-        self.database: Optional[Database] = None
+        self.database: Database | None = None
         if self.settings.runtime.enable_database_logging:
-            self.database = Database(
-                self.settings.resources.default_db_name,
-                self.settings.get_posture_landmarks(),
-            )
+            try:
+                self.database = Database.from_settings(self.settings)
+            except DatabaseInitializationError as exc:
+                logger.exception("Database logging could not be started")
+                self.settings.update_runtime(enable_database_logging=False)
+                QMessageBox.warning(
+                    None,
+                    "Database logging unavailable",
+                    "Posture tracking will continue without database logging.\n\n"
+                    f"{exc}",
+                )
 
         self.tray = PostureTrackerTray(
             settings=self.settings,

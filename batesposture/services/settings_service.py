@@ -9,25 +9,17 @@ from pathlib import Path
 from dataclasses import dataclass, field, fields
 from typing import (
     Any,
-    Dict,
-    Iterable,
-    List,
-    Mapping,
-    MutableMapping,
-    Optional,
-    Tuple,
-    Type,
     get_args,
     get_origin,
     get_type_hints,
 )
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 
 # Import MediaPipe before PyQt6 on Windows to avoid DLL initialization failures
 # when settings are imported outside the main application entry point.
 from ..ml.mediapipe_compat import MP_SOLUTIONS
 
 from PyQt6.QtCore import QSettings, QStandardPaths
-
 
 SETTINGS_SCHEMA_VERSION = "1.1.0"
 SETTINGS_ORGANIZATION = "BatesPosture"
@@ -108,7 +100,7 @@ def get_app_data_dir() -> Path:
     return app_dir
 
 
-def _default_tracking_intervals() -> Dict[str, int]:
+def _default_tracking_intervals() -> dict[str, int]:
     # "Continuous (always on)" maps to 0 (special value meaning no scheduled stop).
     # Placed last so periodic options appear first and are the obvious choices.
     return {
@@ -120,7 +112,7 @@ def _default_tracking_intervals() -> Dict[str, int]:
     }
 
 
-def _default_posture_thresholds() -> Dict[str, float]:
+def _default_posture_thresholds() -> dict[str, float]:
     return {
         "head_tilt": 1.2,
         "neck_angle": 45.0,
@@ -130,7 +122,7 @@ def _default_posture_thresholds() -> Dict[str, float]:
     }
 
 
-def _default_posture_weights() -> List[float]:
+def _default_posture_weights() -> list[float]:
     return list(DEFAULT_POSTURE_WEIGHTS)
 
 
@@ -156,7 +148,7 @@ class RuntimeSettings:
     notification_cooldown: int = 300
     poor_posture_threshold: int = POOR_POSTURE_THRESHOLD_DEFAULT
     default_posture_message: str = "Please sit up straight!"
-    tracking_intervals: Dict[str, int] = field(
+    tracking_intervals: dict[str, int] = field(
         default_factory=_default_tracking_intervals
     )
     tracking_duration_minutes: int = 2
@@ -172,14 +164,13 @@ class MLTuningSettings:
     model_complexity: int = 1
     min_detection_confidence: float = 0.5
     min_tracking_confidence: float = 0.5
-    posture_weights: List[float] = field(default_factory=_default_posture_weights)
-    posture_thresholds: Dict[str, float] = field(
+    posture_weights: list[float] = field(default_factory=_default_posture_weights)
+    posture_thresholds: dict[str, float] = field(
         default_factory=_default_posture_thresholds
     )
     score_buffer_size: int = 1000
     score_window_size: int = 5
     score_threshold: int = SCORE_THRESHOLD_DEFAULT
-    enable_gpu: bool = False
 
 
 @dataclass
@@ -189,7 +180,6 @@ class UserProfileSettings:
     baseline_neck_angle: float = 10.0
     baseline_shoulder_level: float = 0.05
     preferred_theme: str = "system"
-    language_code: str = "en_US"
 
 
 POSTURE_LANDMARKS = [
@@ -221,7 +211,7 @@ def _serialize_value(value: Any) -> Any:
     return value
 
 
-def _coerce_primitive(expected_type: Type[Any], value: Any) -> Any:
+def _coerce_primitive(expected_type: type[Any], value: Any) -> Any:
     if expected_type is bool:
         if isinstance(value, bool):
             return value
@@ -239,7 +229,41 @@ def _coerce_primitive(expected_type: Type[Any], value: Any) -> Any:
     return value
 
 
-def _deserialize_value(expected_type: Type[Any], raw_value: Any, fallback: Any) -> Any:
+def _deserialize_mapping(expected_type: Any, raw_value: Any, args: tuple) -> dict:
+    if isinstance(raw_value, str):
+        try:
+            raw_value = json.loads(raw_value)
+        except json.JSONDecodeError as exc:
+            raise SettingsValidationError("Invalid JSON for mapping setting") from exc
+    if not isinstance(raw_value, Mapping):
+        raise SettingsValidationError(
+            f"Expected mapping for {expected_type}, got {type(raw_value)}"
+        )
+    key_type, value_type = args or (Any, Any)
+    return {
+        _deserialize_value(key_type, key, key): _deserialize_value(
+            value_type, value, value
+        )
+        for key, value in raw_value.items()
+    }
+
+
+def _deserialize_sequence(expected_type: Any, raw_value: Any, args: tuple) -> Any:
+    if isinstance(raw_value, str):
+        try:
+            raw_value = json.loads(raw_value)
+        except json.JSONDecodeError:
+            raw_value = [part.strip() for part in raw_value.split(",") if part.strip()]
+    if not isinstance(raw_value, Iterable) or isinstance(raw_value, (str, bytes)):
+        raise SettingsValidationError(
+            f"Expected iterable for {expected_type}, got {type(raw_value)}"
+        )
+    item_type = args[0] if args else Any
+    coerced = [_deserialize_value(item_type, item, item) for item in raw_value]
+    return coerced if get_origin(expected_type) in (list, Iterable) else tuple(coerced)
+
+
+def _deserialize_value(expected_type: type[Any], raw_value: Any, fallback: Any) -> Any:
     if raw_value is None:
         return fallback
 
@@ -253,52 +277,35 @@ def _deserialize_value(expected_type: Type[Any], raw_value: Any, fallback: Any) 
         return _coerce_primitive(expected, raw_value)
 
     args = get_args(expected_type)
-    if origin in (dict, Dict, MutableMapping, Mapping):
-        if isinstance(raw_value, str):
-            try:
-                raw_value = json.loads(raw_value)
-            except json.JSONDecodeError as exc:
-                raise SettingsValidationError(
-                    "Invalid JSON for mapping setting"
-                ) from exc
-        if not isinstance(raw_value, Mapping):
-            raise SettingsValidationError(
-                f"Expected mapping for {expected_type}, got {type(raw_value)}"
-            )
-        key_type, value_type = args or (Any, Any)
-        return {
-            _deserialize_value(key_type, key, key): _deserialize_value(
-                value_type, val, val
-            )
-            for key, val in raw_value.items()
-        }
-
-    if origin in (list, List, tuple, Tuple, Iterable):
-        if isinstance(raw_value, str):
-            try:
-                raw_value = json.loads(raw_value)
-            except json.JSONDecodeError:
-                raw_value = [
-                    part.strip() for part in raw_value.split(",") if part.strip()
-                ]
-        if not isinstance(raw_value, Iterable) or isinstance(raw_value, (str, bytes)):
-            raise SettingsValidationError(
-                f"Expected iterable for {expected_type}, got {type(raw_value)}"
-            )
-        item_type = args[0] if args else Any
-        coerced = [_deserialize_value(item_type, item, item) for item in raw_value]
-        return coerced if origin in (list, List, Iterable) else tuple(coerced)
+    if origin in (dict, MutableMapping, Mapping):
+        return _deserialize_mapping(expected_type, raw_value, args)
+    if origin in (list, tuple, Iterable):
+        return _deserialize_sequence(expected_type, raw_value, args)
 
     return raw_value
+
+
+def _iter_setting_pairs(raw: Any) -> Iterator[tuple[Any, Any]]:
+    if isinstance(raw, Mapping):
+        yield from raw.items()
+        return
+    if not isinstance(raw, Iterable) or isinstance(raw, (str, bytes)):
+        return
+    for item in raw:
+        if isinstance(item, Mapping):
+            yield from item.items()
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            yield item[0], item[1]
 
 
 class SettingsStore:
     def __init__(
         self,
-        qsettings: Optional[QSettings] = None,
+        qsettings: QSettings | None = None,
         migrate_legacy: bool = True,
+        resources: ResourceSettings | None = None,
     ) -> None:
-        self.resources = ResourceSettings()
+        self.resources = resources or ResourceSettings()
         self.runtime = RuntimeSettings()
         self.ml = MLTuningSettings()
         self.profile = UserProfileSettings()
@@ -325,16 +332,16 @@ class SettingsStore:
         if not os.path.exists(legacy_file):
             return
         try:
-            with open(legacy_file, "r", encoding="utf-8") as handle:
+            with open(legacy_file, encoding="utf-8") as handle:
                 payload = json.load(handle)
         except (OSError, json.JSONDecodeError):
             return
 
         for key, value in payload.items():
-            if key not in KEY_TO_SECTION_FIELD:
+            if key not in LEGACY_KEY_TO_SECTION_FIELD:
                 continue
-            section_name, field_name = KEY_TO_SECTION_FIELD[key]
-            self._set_field(section_name, field_name, value, persist=False)
+            section_name, field_name = LEGACY_KEY_TO_SECTION_FIELD[key]
+            self._set_field(section_name, field_name, value)
 
         self.save_runtime()
         self.save_ml()
@@ -390,45 +397,28 @@ class SettingsStore:
             self.ml.posture_weights = weights
             ml_changed = True
 
+        if self.profile.preferred_theme not in {"system", "light", "dark"}:
+            self.profile.preferred_theme = "system"
+            self.save_profile()
+
         if runtime_changed:
             self.save_runtime()
         if ml_changed:
             self.save_ml()
 
     @staticmethod
-    def _coerce_tracking_intervals(raw: Any) -> Dict[str, int]:
-        if isinstance(raw, Mapping):
-            result: Dict[str, int] = {}
-            for label, value in raw.items():
-                minutes = SettingsStore._coerce_int(value)
-                if minutes is None:
-                    continue
-                result[str(label).strip()] = minutes
-            return result
-
+    def _coerce_tracking_intervals(raw: Any) -> dict[str, int]:
         if isinstance(raw, str):
-            parsed = SettingsStore._parse_interval_string(raw)
-            if parsed:
-                return parsed
-            return {}
-
-        if isinstance(raw, Iterable) and not isinstance(raw, (str, bytes)):
-            result: Dict[str, int] = {}
-            for item in raw:
-                if isinstance(item, Mapping):
-                    result.update(SettingsStore._coerce_tracking_intervals(item))
-                    continue
-                if isinstance(item, (list, tuple)) and len(item) >= 2:
-                    label = str(item[0]).strip()
-                    minutes = SettingsStore._coerce_int(item[1])
-                    if minutes is not None:
-                        result[label] = minutes
-            return result
-
-        return {}
+            return SettingsStore._parse_interval_string(raw)
+        result: dict[str, int] = {}
+        for label, value in _iter_setting_pairs(raw):
+            minutes = SettingsStore._coerce_int(value)
+            if minutes is not None:
+                result[str(label).strip()] = minutes
+        return result
 
     @staticmethod
-    def _parse_interval_string(payload: str) -> Dict[str, int]:
+    def _parse_interval_string(payload: str) -> dict[str, int]:
         payload = payload.strip()
         if not payload:
             return {}
@@ -441,7 +431,7 @@ class SettingsStore:
         if isinstance(decoded, Iterable) and not isinstance(decoded, (str, bytes)):
             return SettingsStore._coerce_tracking_intervals(list(decoded))
 
-        result: Dict[str, int] = {}
+        result: dict[str, int] = {}
         fragments = [frag for frag in payload.split(",") if frag.strip()]
         for fragment in fragments:
             separator = ":" if ":" in fragment else "="
@@ -455,48 +445,25 @@ class SettingsStore:
         return result
 
     @staticmethod
-    def _coerce_int(value: Any) -> Optional[int]:
+    def _coerce_int(value: Any) -> int | None:
         try:
             return int(float(value))
         except (TypeError, ValueError):
             return None
 
     @staticmethod
-    def _coerce_threshold_mapping(raw: Any) -> Dict[str, float]:
-        if isinstance(raw, Mapping):
-            result: Dict[str, float] = {}
-            for key, value in raw.items():
-                coerced = SettingsStore._coerce_float(value)
-                if coerced is None:
-                    continue
-                result[str(key)] = coerced
-            return result
-
+    def _coerce_threshold_mapping(raw: Any) -> dict[str, float]:
         if isinstance(raw, str):
-            converted = SettingsStore._loads_flexible(raw)
-            if isinstance(converted, Mapping):
-                return SettingsStore._coerce_threshold_mapping(converted)
-            if isinstance(converted, Iterable):
-                return SettingsStore._coerce_threshold_mapping(converted)
-            return {}
-
-        if isinstance(raw, Iterable) and not isinstance(raw, (str, bytes)):
-            result: Dict[str, float] = {}
-            for item in raw:
-                if isinstance(item, Mapping):
-                    result.update(SettingsStore._coerce_threshold_mapping(item))
-                    continue
-                if isinstance(item, (list, tuple)) and len(item) >= 2:
-                    key = str(item[0]).strip()
-                    value = SettingsStore._coerce_float(item[1])
-                    if value is not None:
-                        result[key] = value
-            return result
-
-        return {}
+            raw = SettingsStore._loads_flexible(raw)
+        result: dict[str, float] = {}
+        for key, raw_value in _iter_setting_pairs(raw):
+            value = SettingsStore._coerce_float(raw_value)
+            if value is not None:
+                result[str(key).strip()] = value
+        return result
 
     @staticmethod
-    def _merge_threshold_defaults(raw: Mapping[str, float]) -> Dict[str, float]:
+    def _merge_threshold_defaults(raw: Mapping[str, float]) -> dict[str, float]:
         merged = _default_posture_thresholds()
         for key, value in raw.items():
             if key in merged and value > 0:
@@ -504,11 +471,11 @@ class SettingsStore:
         return merged
 
     @staticmethod
-    def _coerce_weight_list(raw: Any) -> List[float]:
+    def _coerce_weight_list(raw: Any) -> list[float]:
         if isinstance(raw, str):
             raw = SettingsStore._loads_flexible(raw)
         if isinstance(raw, Iterable) and not isinstance(raw, (str, bytes)):
-            result: List[float] = []
+            result: list[float] = []
             for item in raw:
                 value = SettingsStore._coerce_float(item)
                 if value is not None:
@@ -528,7 +495,7 @@ class SettingsStore:
         )
 
     @staticmethod
-    def _coerce_float(value: Any) -> Optional[float]:
+    def _coerce_float(value: Any) -> float | None:
         try:
             return float(value)
         except (TypeError, ValueError):
@@ -576,9 +543,7 @@ class SettingsStore:
     def save_profile(self) -> None:
         self._save_group("profile", self.profile)
 
-    def _set_field(
-        self, section_name: str, field_name: str, value: Any, persist: bool = True
-    ) -> None:
+    def _set_field(self, section_name: str, field_name: str, value: Any) -> None:
         section = getattr(self, section_name, None)
         if section is None:
             raise KeyError(f"Unknown settings section: {section_name}")
@@ -592,47 +557,27 @@ class SettingsStore:
                 expected_type, value, getattr(section, field_name)
             )
             setattr(section, field_name, coerced)
-            if persist:
-                if section_name == "runtime":
-                    self.save_runtime()
-                elif section_name == "ml":
-                    self.save_ml()
-                elif section_name == "profile":
-                    self.save_profile()
             return
 
         raise KeyError(f"Unknown field {field_name} in section {section_name}")
 
-    def get(self, key: str) -> Any:
-        section_name, field_name = KEY_TO_SECTION_FIELD[key]
-        section = getattr(self, section_name)
-        return getattr(section, field_name)
-
-    def update(self, key: str, value: Any) -> None:
-        if key not in KEY_TO_SECTION_FIELD:
-            raise KeyError(f"Unknown setting: {key}")
-        section_name, field_name = KEY_TO_SECTION_FIELD[key]
-        self._set_field(section_name, field_name, value)
-
     def update_runtime(self, **overrides: Any) -> None:
         for field_name, value in overrides.items():
-            self._set_field("runtime", field_name, value, persist=False)
+            self._set_field("runtime", field_name, value)
         self.save_runtime()
 
     def update_ml(self, **overrides: Any) -> None:
         for field_name, value in overrides.items():
-            self._set_field("ml", field_name, value, persist=False)
+            self._set_field("ml", field_name, value)
         self.save_ml()
 
     def update_profile(self, **overrides: Any) -> None:
         for field_name, value in overrides.items():
-            self._set_field("profile", field_name, value, persist=False)
+            self._set_field("profile", field_name, value)
         self.save_profile()
 
 
-KEY_TO_SECTION_FIELD: Dict[str, Tuple[str, str]] = {
-    "ICON_PATH": ("resources", "icon_path"),
-    "DEFAULT_DB_NAME": ("resources", "default_db_name"),
+LEGACY_KEY_TO_SECTION_FIELD: dict[str, tuple[str, str]] = {
     "POSTURE_WEIGHTS": ("ml", "posture_weights"),
     "POSTURE_THRESHOLDS": ("ml", "posture_thresholds"),
     "MIN_DETECTION_CONFIDENCE": ("ml", "min_detection_confidence"),
@@ -655,20 +600,18 @@ KEY_TO_SECTION_FIELD: Dict[str, Tuple[str, str]] = {
     "NOTIFICATIONS_ENABLED": ("runtime", "notifications_enabled"),
     "FOCUS_MODE_ENABLED": ("runtime", "focus_mode_enabled"),
     "ADAPTIVE_RESOLUTION": ("runtime", "adaptive_resolution"),
-    "ENABLE_GPU": ("ml", "enable_gpu"),
     "HAS_COMPLETED_ONBOARDING": ("profile", "has_completed_onboarding"),
     "BASELINE_POSTURE_SCORE": ("profile", "baseline_posture_score"),
     "BASELINE_NECK_ANGLE": ("profile", "baseline_neck_angle"),
     "BASELINE_SHOULDER_LEVEL": ("profile", "baseline_shoulder_level"),
     "PREFERRED_THEME": ("profile", "preferred_theme"),
-    "LANGUAGE_CODE": ("profile", "language_code"),
 }
 
 
 class SettingsService:
     """Façade over persistent settings with structured accessors."""
 
-    def __init__(self, store: Optional[SettingsStore] = None) -> None:
+    def __init__(self, store: SettingsStore | None = None) -> None:
         self._store = store or SettingsStore()
 
     @property
@@ -696,22 +639,23 @@ class SettingsService:
     def update_profile(self, **overrides: Any) -> None:
         self._store.update_profile(**overrides)
 
-    def save_all(self) -> None:
-        self._store.save_runtime()
-        self._store.save_ml()
-        self._store.save_profile()
-
-    def get_posture_landmarks(self) -> List[Any]:
+    def get_posture_landmarks(self) -> list[Any]:
         return POSTURE_LANDMARKS
 
     @classmethod
-    def for_testing(
-        cls, path: Optional[os.PathLike[str] | str] = None
-    ) -> "SettingsService":
+    def for_testing(cls, path: os.PathLike[str] | str | None = None) -> SettingsService:
         if path is None:
             temp_dir = tempfile.gettempdir()
             path = os.path.join(temp_dir, f"posture_test_{uuid.uuid4().hex}.ini")
-        qsettings = QSettings(str(path), QSettings.Format.IniFormat)
+        settings_path = Path(path)
+        qsettings = QSettings(str(settings_path), QSettings.Format.IniFormat)
         qsettings.clear()
-        store = SettingsStore(qsettings=qsettings, migrate_legacy=False)
+        resources = ResourceSettings(
+            default_db_name=str(settings_path.parent / "posture_data.db")
+        )
+        store = SettingsStore(
+            qsettings=qsettings,
+            migrate_legacy=False,
+            resources=resources,
+        )
         return cls(store)

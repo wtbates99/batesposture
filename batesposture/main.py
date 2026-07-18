@@ -100,6 +100,9 @@ def _acquire_single_instance_lock(lock_file: str) -> QLockFile | None:
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("BatesPosture")
+    app.setApplicationDisplayName("BatesPosture")
+    app.setOrganizationName("BatesPosture")
+    app.setOrganizationDomain("posture.palanbates.com")
 
     lock_file = os.path.join(get_app_data_dir(), "batesposture.lock")
     lock = _acquire_single_instance_lock(lock_file)

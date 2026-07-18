@@ -1,4 +1,5 @@
 """Unit tests for ScoreService — streaks, pause/resume, absence handling, and stats."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -13,7 +14,6 @@ from ..services.settings_service import SettingsService
 def settings(tmp_path):
     svc = SettingsService.for_testing(tmp_path / "settings.ini")
     svc.update_ml(score_threshold=65, score_window_size=5, score_buffer_size=1000)
-    svc.save_all()
     return svc
 
 

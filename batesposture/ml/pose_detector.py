@@ -1,20 +1,20 @@
 from __future__ import annotations
 
+import json
 import logging
+import time
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import cv2
-import json
-import time
 import numpy as np
 
-from .mediapipe_compat import MP_SOLUTIONS
 from ..services.settings_service import (
     DEFAULT_POSTURE_WEIGHTS,
     SettingsService,
     _default_posture_thresholds,
 )
+from .mediapipe_compat import MP_SOLUTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PoseDetectionResult:
     results: Any
-    metrics: Dict[str, float]
+    metrics: dict[str, float]
 
     @property
     def pose_landmarks(self) -> Any:
@@ -51,7 +51,7 @@ class PoseDetector:
         self.frame_width = 0
         self.frame_height = 0
         self.weights = np.array([], dtype=float)
-        self.score_thresholds: Dict[str, float] = {}
+        self.score_thresholds: dict[str, float] = {}
         self.pose = None
         # Cached CLAHE object — creating one per frame is expensive at 30 FPS
         self._clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
@@ -74,17 +74,10 @@ class PoseDetector:
 
     def _create_pose(self):
         ml_settings = self._settings.ml
-        model_complexity = ml_settings.model_complexity
-        if ml_settings.enable_gpu:
-            # Force highest-complexity model when GPU is requested; MediaPipe Python
-            # bindings don't expose an explicit GPU flag — complexity=2 is the model
-            # most likely to benefit from hardware acceleration.
-            model_complexity = 2
-            logger.info("GPU mode enabled: using model_complexity=2")
         return self.mp_pose.Pose(
             min_detection_confidence=ml_settings.min_detection_confidence,
             min_tracking_confidence=ml_settings.min_tracking_confidence,
-            model_complexity=model_complexity,
+            model_complexity=ml_settings.model_complexity,
         )
 
     def reload(self) -> None:
@@ -102,7 +95,7 @@ class PoseDetector:
         if old_pose is not None and hasattr(old_pose, "close"):
             old_pose.close()
 
-    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, Any]:
+    def process_frame(self, frame: np.ndarray) -> tuple[np.ndarray, float, Any]:
         try:
             frame = self._preprocess_frame(frame)
             results = self._detect_pose(frame)
@@ -181,16 +174,16 @@ class PoseDetector:
         dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
         return float(np.degrees(np.arccos(dot_product)))
 
-    def calculate_posture_metrics(self, landmarks: Any) -> Dict[str, float]:
+    def calculate_posture_metrics(self, landmarks: Any) -> dict[str, float]:
         return self._compute_posture_metrics(landmarks)
 
-    def _compute_posture_metrics(self, landmarks: Any) -> Dict[str, float]:
+    def _compute_posture_metrics(self, landmarks: Any) -> dict[str, float]:
         points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
         return self._compute_posture_metrics_from_points(points)
 
     def _compute_posture_metrics_from_points(
         self, points: np.ndarray
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         nose = points[self.mp_pose.PoseLandmark.NOSE]
         ears = points[
             [self.mp_pose.PoseLandmark.LEFT_EAR, self.mp_pose.PoseLandmark.RIGHT_EAR]
@@ -325,7 +318,7 @@ class PoseDetector:
         return np.array([value / total for value in coerced], dtype=float)
 
     @staticmethod
-    def _normalize_thresholds(thresholds: Any) -> Dict[str, float]:
+    def _normalize_thresholds(thresholds: Any) -> dict[str, float]:
         if isinstance(thresholds, str):
             try:
                 thresholds = json.loads(thresholds)

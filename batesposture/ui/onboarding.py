@@ -1,32 +1,33 @@
 from __future__ import annotations
 
-import sys
 import time
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 import cv2
 from PyQt6 import sip
-from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal, pyqtSlot, QObject
-from PyQt6.QtGui import QFont, QImage, QPixmap
+from PyQt6.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
+    QDialog,
+    QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
+    QWidget,
     QWizard,
     QWizardPage,
-    QWidget,
-    QMessageBox,
-    QDialog,
 )
 
 from ..ml.pose_detector import PoseDetector
+from ..services.camera_capture import open_camera
 from ..services.settings_service import (
     CALIBRATION_DURATION_SECONDS,
     CALIBRATION_TIMEOUT_MARGIN_SECONDS,
     SettingsService,
 )
+from .theme import wizard_stylesheet
 
 
 @dataclass
@@ -37,22 +38,21 @@ class CalibrationResult:
 
 
 class CameraPreviewWidget(QLabel):
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("cameraPreview")
         self.setText(self.tr("Camera preview will appear here"))
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._camera_id = 0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._update_frame)
-        self._capture: Optional[cv2.VideoCapture] = None
+        self._capture: cv2.VideoCapture | None = None
 
     def start(self, camera_id: int) -> None:
         self.stop()
         self._camera_id = camera_id
-        capture = cv2.VideoCapture(self._camera_id)
-        if not capture.isOpened() and sys.platform == "darwin":
-            capture = cv2.VideoCapture(self._camera_id, cv2.CAP_AVFOUNDATION)
-        if not capture or not capture.isOpened():
+        capture = open_camera(self._camera_id)
+        if capture is None:
             self.setText(self.tr("Unable to open camera"))
             return
         self._capture = capture
@@ -135,12 +135,8 @@ class CalibrationWorker(QObject):
         capture = None
         try:
             camera_id = self._settings.runtime.default_camera_id
-            capture = cv2.VideoCapture(camera_id)
-            if not capture.isOpened() and sys.platform == "darwin":
-                capture.release()
-                capture = cv2.VideoCapture(camera_id, cv2.CAP_AVFOUNDATION)
-
-            if not capture or not capture.isOpened():
+            capture = open_camera(camera_id)
+            if capture is None:
                 self.failed.emit(
                     QApplication.translate(
                         "CalibrationWorker", "Unable to access camera"
@@ -149,14 +145,14 @@ class CalibrationWorker(QObject):
                 return
 
             detector = PoseDetector(self._settings)
-            start_time = time.time()
-            collected: Dict[str, list] = {
+            start_time = time.monotonic()
+            collected: dict[str, list] = {
                 "posture_score": [],
                 "neck_angle": [],
                 "shoulder_delta": [],
             }
 
-            while not self._stop and time.time() - start_time < self._duration:
+            while not self._stop and time.monotonic() - start_time < self._duration:
                 ret, frame = capture.read()
                 if not ret:
                     time.sleep(0.05)
@@ -212,36 +208,55 @@ class CalibrationWorker(QObject):
 class WelcomePage(QWizardPage):
     """Opening wizard page — introduces the three-step onboarding flow."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, icon_path: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setTitle(self.tr("Welcome to Posture Coach"))
+        self.setTitle(self.tr("Welcome"))
         self.setSubTitle(
-            self.tr("We will calibrate your experience in three quick steps.")
+            self.tr("A short calibration personalizes your posture score.")
         )
+
+        brand_icon = QLabel()
+        pixmap = QPixmap(icon_path)
+        if not pixmap.isNull():
+            brand_icon.setPixmap(
+                pixmap.scaled(
+                    56,
+                    56,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+        brand_name = QLabel("BatesPosture")
+        brand_name.setObjectName("brandName")
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(12)
+        brand_row.addWidget(brand_icon)
+        brand_row.addWidget(brand_name)
+        brand_row.addStretch()
 
         hero = QLabel(
             self.tr(
-                "Great posture starts with awareness. We'll help you dial in camera framing, learn posture cues, and capture your personal baseline so reminders feel tailored."
+                "Sit naturally while BatesPosture learns your neutral alignment. Your camera stays local to this device."
             )
         )
+        hero.setObjectName("heroText")
         hero.setWordWrap(True)
-        hero_font = QFont()
-        hero_font.setPointSize(hero_font.pointSize() + 2)
-        hero_font.setBold(True)
-        hero.setFont(hero_font)
 
         tips = QLabel(
             self.tr(
-                "- Find a well-lit space\n"
-                "- Position your camera at eye level\n"
-                "- Sit naturally - no need to pose!"
+                "1. Use a well-lit space\n"
+                "2. Position the camera near eye level\n"
+                "3. Keep your head and shoulders in frame"
             )
         )
+        tips.setObjectName("supportText")
         tips.setWordWrap(True)
 
         layout = QVBoxLayout()
+        layout.setSpacing(14)
+        layout.addLayout(brand_row)
+        layout.addSpacing(8)
         layout.addWidget(hero)
-        layout.addSpacing(12)
         layout.addWidget(tips)
         layout.addStretch(1)
         self.setLayout(layout)
@@ -255,7 +270,7 @@ class CameraSetupPage(QWizardPage):
     """
 
     def __init__(
-        self, settings: SettingsService, parent: Optional[QWidget] = None
+        self, settings: SettingsService, parent: QWidget | None = None
     ) -> None:
         super().__init__(parent)
         self._settings = settings
@@ -272,6 +287,7 @@ class CameraSetupPage(QWizardPage):
                 "Adjust your seating so your head and shoulders are visible. Use natural lighting when possible."
             )
         )
+        guidance.setObjectName("supportText")
         guidance.setWordWrap(True)
 
         layout = QVBoxLayout()
@@ -304,7 +320,7 @@ class CalibrationPage(QWizardPage):
     """
 
     def __init__(
-        self, settings: SettingsService, parent: Optional[QWidget] = None
+        self, settings: SettingsService, parent: QWidget | None = None
     ) -> None:
         super().__init__(parent)
         self._settings = settings
@@ -323,12 +339,16 @@ class CalibrationPage(QWizardPage):
                 'When you\'re ready, sit comfortably and press "Start calibration".'
             )
         )
+        self.status_label.setObjectName("supportText")
         self.status_label.setWordWrap(True)
 
         self.results_label = QLabel("")
+        self.results_label.setObjectName("resultPanel")
         self.results_label.setWordWrap(True)
+        self.results_label.setVisible(False)
 
         self.start_button = QPushButton(self.tr("Start calibration"))
+        self.start_button.setObjectName("primaryButton")
         self.start_button.clicked.connect(self._begin_calibration)
 
         layout = QVBoxLayout()
@@ -342,10 +362,10 @@ class CalibrationPage(QWizardPage):
         layout.addStretch(1)
         self.setLayout(layout)
 
-        self._thread: Optional[QThread] = None
-        self._worker: Optional[CalibrationWorker] = None
-        self._metrics: Optional[CalibrationResult] = None
-        self._timeout: Optional[QTimer] = None
+        self._thread: QThread | None = None
+        self._worker: CalibrationWorker | None = None
+        self._metrics: CalibrationResult | None = None
+        self._timeout: QTimer | None = None
 
     def initializePage(self) -> None:  # noqa: N802 - Qt override
         self.preview.start(self._settings.runtime.default_camera_id)
@@ -416,6 +436,7 @@ class CalibrationPage(QWizardPage):
                 delta=result.shoulder_delta,
             )
         )
+        self.results_label.setVisible(True)
         self._cleanup_worker()
         self.preview.start(self._settings.runtime.default_camera_id)
         self.completeChanged.emit()
@@ -441,7 +462,7 @@ class CalibrationPage(QWizardPage):
         self._thread = None
         self._worker = None
 
-        def _is_alive(obj: Optional[QObject]) -> bool:
+        def _is_alive(obj: QObject | None) -> bool:
             return obj is not None and not sip.isdeleted(obj)
 
         if _is_alive(thread):
@@ -455,22 +476,23 @@ class CalibrationPage(QWizardPage):
     def isComplete(self) -> bool:  # noqa: N802 - Qt override
         return self._metrics is not None
 
-    def metrics(self) -> Optional[CalibrationResult]:
+    def metrics(self) -> CalibrationResult | None:
         return self._metrics
 
 
 class OnboardingWizard(QWizard):
     def __init__(
-        self, settings_service: SettingsService, parent: Optional[QWidget] = None
+        self, settings_service: SettingsService, parent: QWidget | None = None
     ) -> None:
         super().__init__(parent)
         self._settings = settings_service
-        self.setWindowTitle(self.tr("Posture Coach Setup"))
+        self.setWindowTitle(self.tr("BatesPosture Setup"))
         self.setOption(QWizard.WizardOption.IndependentPages, False)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
-        self.setMinimumWidth(500)
+        self.setMinimumSize(560, 600)
+        self.resize(620, 680)
 
-        self.welcome_page = WelcomePage()
+        self.welcome_page = WelcomePage(settings_service.resources.icon_path)
         self.camera_page = CameraSetupPage(settings_service)
         self.calibration_page = CalibrationPage(settings_service)
 
@@ -480,7 +502,9 @@ class OnboardingWizard(QWizard):
         self._last_page_id = self.currentId()
         self.currentIdChanged.connect(self._handle_page_change)
 
-        self._metrics: Optional[CalibrationResult] = None
+        self.button(QWizard.WizardButton.NextButton).setObjectName("primaryButton")
+        self.button(QWizard.WizardButton.FinishButton).setObjectName("primaryButton")
+        self.setStyleSheet(wizard_stylesheet(settings_service.profile.preferred_theme))
 
     def accept(self) -> None:
         metrics = self.calibration_page.metrics()
@@ -491,12 +515,7 @@ class OnboardingWizard(QWizard):
                 baseline_neck_angle=metrics.neck_angle,
                 baseline_shoulder_level=metrics.shoulder_delta,
             )
-            self._settings.save_all()
-            self._metrics = metrics
         super().accept()
-
-    def collected_metrics(self) -> Optional[CalibrationResult]:
-        return self._metrics
 
     def _handle_page_change(self, page_id: int) -> None:
         if self._last_page_id == self._camera_page_id and self.camera_page is not None:
@@ -505,7 +524,7 @@ class OnboardingWizard(QWizard):
 
 
 def run_onboarding_if_needed(
-    settings_service: SettingsService, parent: Optional[QWidget] = None
+    settings_service: SettingsService, parent: QWidget | None = None
 ) -> bool:
     if settings_service.profile.has_completed_onboarding:
         return False

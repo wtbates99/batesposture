@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from time import monotonic
 
-from ..util__send_notification import send_notification
-
+from .platform_notification import send_notification
 from .settings_service import SettingsService
 
 
