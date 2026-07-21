@@ -71,7 +71,7 @@ class SettingsDialog(QDialog):
         self.validation_errors: dict[str, str] = {}
 
         self.setWindowTitle("BatesPosture Settings")
-        self.setMinimumSize(800, 560)
+        self.setMinimumSize(900, 560)
         self.resize(960, 700)
         self._apply_theme(self.profile_settings.preferred_theme)
 
