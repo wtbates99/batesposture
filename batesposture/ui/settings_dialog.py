@@ -356,9 +356,7 @@ class SettingsDialog(QDialog):
         res_row.addStretch()
         form.addRow("Resolution:", res_row)
 
-        self.adaptive_resolution_checkbox = QCheckBox(
-            "Automatically lower resolution on slow hardware"
-        )
+        self.adaptive_resolution_checkbox = QCheckBox("Enable automatic adjustment")
         self.adaptive_resolution_checkbox.setChecked(
             self.runtime_settings.adaptive_resolution
         )
