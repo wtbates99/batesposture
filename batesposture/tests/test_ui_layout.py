@@ -17,8 +17,12 @@ def test_settings_pages_fit_minimum_window_without_horizontal_scroll(qapp, tmp_p
     dialog.show()
     qapp.processEvents()
 
-    for scroll in dialog.findChildren(QScrollArea):
-        assert scroll.horizontalScrollBar().maximum() == 0
+    for index, (section, *_rest) in enumerate(dialog.SECTION_DEFS):
+        dialog.section_stack.setCurrentIndex(index)
+        qapp.processEvents()
+        scroll = dialog.section_stack.currentWidget()
+        assert isinstance(scroll, QScrollArea)
+        assert scroll.horizontalScrollBar().maximum() == 0, section
 
     dialog.close()
 

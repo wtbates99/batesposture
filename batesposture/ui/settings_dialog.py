@@ -237,6 +237,7 @@ class SettingsDialog(QDialog):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         form.setHorizontalSpacing(16)
         form.setVerticalSpacing(12)
         form.setContentsMargins(16, 14, 16, 16)

@@ -7,7 +7,9 @@ from ..services import camera_capture
 
 def test_backend_candidates_match_desktop_platform(monkeypatch):
     monkeypatch.setattr(camera_capture.sys, "platform", "darwin")
-    assert camera_capture._backend_candidates()[0] == camera_capture.cv2.CAP_AVFOUNDATION
+    assert (
+        camera_capture._backend_candidates()[0] == camera_capture.cv2.CAP_AVFOUNDATION
+    )
 
     monkeypatch.setattr(camera_capture.sys, "platform", "win32")
     assert camera_capture._backend_candidates()[:2] == (

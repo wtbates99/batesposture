@@ -27,6 +27,8 @@ def create_score_icon(score: float) -> QIcon:
     font.setPixelSize(24 if bounded_score < 100 else 20)
     painter.setFont(font)
     painter.setPen(QColor("#ffffff"))
-    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, str(round(bounded_score)))
+    painter.drawText(
+        pixmap.rect(), Qt.AlignmentFlag.AlignCenter, str(round(bounded_score))
+    )
     painter.end()
     return QIcon(pixmap)
