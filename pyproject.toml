@@ -33,7 +33,6 @@ dependencies = [
 batesposture = "batesposture.main:main"
 
 [project.urls]
-Homepage = "https://posture.palanbates.com"
 Repository = "https://github.com/wtbates99/batesposture"
 "Bug Tracker" = "https://github.com/wtbates99/batesposture/issues"
 

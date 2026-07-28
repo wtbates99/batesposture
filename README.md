@@ -9,9 +9,8 @@
 [![Last commit](https://img.shields.io/github/last-commit/wtbates99/batesposture?color=c9a84c&style=flat-square)](https://github.com/wtbates99/batesposture/commits/main)
 [![Python](https://img.shields.io/badge/python-3.10+-c9a84c?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Made with MediaPipe](https://img.shields.io/badge/pose-MediaPipe-e07830?style=flat-square)](https://google.github.io/mediapipe/)
-[![Site](https://img.shields.io/badge/site-posture.palanbates.com-4d8a5e?style=flat-square)](https://posture.palanbates.com)
 
-[**Website**](https://posture.palanbates.com) · [**Install**](#install) · [**How it works**](#how-it-works) · [**Privacy**](#privacy) · [**FAQ**](#faq)
+[**Install**](#install) · [**How it works**](#how-it-works) · [**Privacy**](#privacy) · [**FAQ**](#faq)
 
 </div>
 
@@ -177,7 +176,7 @@ Issues and PRs welcome. If you change runtime behavior, update tests and keep th
 
 <div align="center">
 
-**[posture.palanbates.com](https://posture.palanbates.com)** · AGPL-3.0 license · Built by [@wtbates99](https://github.com/wtbates99)
+AGPL-3.0 license · Built by [@wtbates99](https://github.com/wtbates99)
 
 If BatesPosture saves your neck, ⭐ the repo — that's how more people find it.
 
