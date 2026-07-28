@@ -1,0 +1,661 @@
+from __future__ import annotations
+
+import json
+import os
+import sys
+import tempfile
+import uuid
+from pathlib import Path
+from dataclasses import dataclass, field, fields
+from typing import (
+    Any,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping
+
+# Import MediaPipe before PyQt6 on Windows to avoid DLL initialization failures
+# when settings are imported outside the main application entry point.
+from ..ml.mediapipe_compat import MP_SOLUTIONS
+
+from PyQt6.QtCore import QSettings, QStandardPaths
+
+SETTINGS_SCHEMA_VERSION = "1.1.0"
+SETTINGS_ORGANIZATION = "BatesPosture"
+SETTINGS_APPLICATION = "PostureApp"
+ENV_PREFIX = "POSTURE"
+
+# Named defaults — import these in other modules instead of repeating magic numbers
+POOR_POSTURE_THRESHOLD_DEFAULT: int = 60
+SCORE_THRESHOLD_DEFAULT: int = 65
+DEFAULT_POSTURE_WEIGHTS: tuple[float, ...] = (0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05)
+BREAK_REMINDER_MINUTES: int = 50
+CALIBRATION_DURATION_SECONDS: int = 6
+CALIBRATION_TIMEOUT_MARGIN_SECONDS: int = 6
+
+LEGACY_USER_SETTINGS_FILE = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../user_settings.json")
+)
+
+
+class SettingsValidationError(ValueError):
+    """Raised when attempting to set an invalid value on the settings store."""
+
+
+def get_resource_path(relative_path: str) -> str:
+    relative = Path(relative_path)
+    candidates = []
+
+    # PyInstaller bundle: resources land at _MEIPASS root
+    base_path = getattr(sys, "_MEIPASS", None)
+    if base_path:
+        pyinstaller_root = Path(base_path)
+        candidates.append(pyinstaller_root / relative)
+        # strip leading package name if present (e.g. "batesposture/static/…")
+        if relative.parts and relative.parts[0] == "batesposture":
+            candidates.append(pyinstaller_root / Path(*relative.parts[1:]))
+
+    # Normal install: __file__ is …/batesposture/services/settings_service.py
+    pkg_root = Path(__file__).resolve().parent.parent  # …/batesposture/
+    project_root = pkg_root.parent  # repo root
+
+    for root in (project_root, pkg_root):
+        candidates.append(root / relative)
+        if relative.parts and relative.parts[0] == "batesposture":
+            candidates.append(root / Path(*relative.parts[1:]))
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    return str(Path.cwd() / relative)
+
+
+def get_app_data_dir() -> Path:
+    """Return the per-user writable data directory for BatesPosture."""
+    base_dir = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.AppDataLocation
+    ) or QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.AppLocalDataLocation
+    )
+    if base_dir:
+        app_dir = Path(base_dir)
+    elif sys.platform == "darwin":
+        app_dir = Path.home() / "Library" / "Application Support"
+    elif os.name == "nt":
+        app_dir = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    else:
+        app_dir = Path(
+            os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
+        )
+
+    if app_dir.name != SETTINGS_ORGANIZATION:
+        app_dir = app_dir / SETTINGS_ORGANIZATION
+    try:
+        app_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        app_dir = Path(tempfile.gettempdir()) / SETTINGS_ORGANIZATION
+        app_dir.mkdir(parents=True, exist_ok=True)
+    return app_dir
+
+
+def _default_tracking_intervals() -> dict[str, int]:
+    # "Continuous (always on)" maps to 0 (special value meaning no scheduled stop).
+    # Placed last so periodic options appear first and are the obvious choices.
+    return {
+        "Every 5 minutes": 5,
+        "Every 15 minutes": 15,
+        "Every 30 minutes": 30,
+        "Every hour": 60,
+        "Continuous (always on)": 0,
+    }
+
+
+def _default_posture_thresholds() -> dict[str, float]:
+    return {
+        "head_tilt": 1.2,
+        "neck_angle": 45.0,
+        "shoulder_level": 5.0,
+        "shoulder_roll": 2.0,
+        "spine_angle": 45.0,
+    }
+
+
+def _default_posture_weights() -> list[float]:
+    return list(DEFAULT_POSTURE_WEIGHTS)
+
+
+def _default_icon_path() -> str:
+    icon_name = "icon.ico" if os.name == "nt" else "icon.png"
+    return get_resource_path(f"batesposture/static/{icon_name}")
+
+
+@dataclass(frozen=True)
+class ResourceSettings:
+    icon_path: str = field(default_factory=_default_icon_path)
+    default_db_name: str = field(
+        default_factory=lambda: str(get_app_data_dir() / "posture_data.db")
+    )
+
+
+@dataclass
+class RuntimeSettings:
+    default_camera_id: int = 0
+    default_fps: int = 30
+    frame_width: int = 1280
+    frame_height: int = 720
+    notification_cooldown: int = 300
+    poor_posture_threshold: int = POOR_POSTURE_THRESHOLD_DEFAULT
+    default_posture_message: str = "Please sit up straight!"
+    tracking_intervals: dict[str, int] = field(
+        default_factory=_default_tracking_intervals
+    )
+    tracking_duration_minutes: int = 2
+    enable_database_logging: bool = False
+    db_write_interval_seconds: int = 900
+    notifications_enabled: bool = True
+    focus_mode_enabled: bool = False
+    adaptive_resolution: bool = False
+
+
+@dataclass
+class MLTuningSettings:
+    model_complexity: int = 1
+    min_detection_confidence: float = 0.5
+    min_tracking_confidence: float = 0.5
+    posture_weights: list[float] = field(default_factory=_default_posture_weights)
+    posture_thresholds: dict[str, float] = field(
+        default_factory=_default_posture_thresholds
+    )
+    score_buffer_size: int = 1000
+    score_window_size: int = 5
+    score_threshold: int = SCORE_THRESHOLD_DEFAULT
+
+
+@dataclass
+class UserProfileSettings:
+    has_completed_onboarding: bool = False
+    baseline_posture_score: float = 75.0
+    baseline_neck_angle: float = 10.0
+    baseline_shoulder_level: float = 0.05
+    preferred_theme: str = "system"
+
+
+POSTURE_LANDMARKS = [
+    MP_SOLUTIONS.pose.PoseLandmark.NOSE,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EYE_INNER,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EYE,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EYE_OUTER,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EYE_INNER,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EYE,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EYE_OUTER,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EAR,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EAR,
+    MP_SOLUTIONS.pose.PoseLandmark.MOUTH_LEFT,
+    MP_SOLUTIONS.pose.PoseLandmark.MOUTH_RIGHT,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_SHOULDER,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_SHOULDER,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_ELBOW,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_ELBOW,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_WRIST,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_WRIST,
+    MP_SOLUTIONS.pose.PoseLandmark.LEFT_HIP,
+    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_HIP,
+]
+
+
+def _serialize_value(value: Any) -> Any:
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value)
+    return value
+
+
+def _coerce_primitive(expected_type: type[Any], value: Any) -> Any:
+    if expected_type is bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        raise SettingsValidationError(f"Cannot coerce {value!r} to bool")
+    if expected_type is int:
+        return int(value)
+    if expected_type is float:
+        return float(value)
+    if expected_type is str:
+        return str(value)
+    return value
+
+
+def _deserialize_mapping(expected_type: Any, raw_value: Any, args: tuple) -> dict:
+    if isinstance(raw_value, str):
+        try:
+            raw_value = json.loads(raw_value)
+        except json.JSONDecodeError as exc:
+            raise SettingsValidationError("Invalid JSON for mapping setting") from exc
+    if not isinstance(raw_value, Mapping):
+        raise SettingsValidationError(
+            f"Expected mapping for {expected_type}, got {type(raw_value)}"
+        )
+    key_type, value_type = args or (Any, Any)
+    return {
+        _deserialize_value(key_type, key, key): _deserialize_value(
+            value_type, value, value
+        )
+        for key, value in raw_value.items()
+    }
+
+
+def _deserialize_sequence(expected_type: Any, raw_value: Any, args: tuple) -> Any:
+    if isinstance(raw_value, str):
+        try:
+            raw_value = json.loads(raw_value)
+        except json.JSONDecodeError:
+            raw_value = [part.strip() for part in raw_value.split(",") if part.strip()]
+    if not isinstance(raw_value, Iterable) or isinstance(raw_value, (str, bytes)):
+        raise SettingsValidationError(
+            f"Expected iterable for {expected_type}, got {type(raw_value)}"
+        )
+    item_type = args[0] if args else Any
+    coerced = [_deserialize_value(item_type, item, item) for item in raw_value]
+    return coerced if get_origin(expected_type) in (list, Iterable) else tuple(coerced)
+
+
+def _deserialize_value(expected_type: type[Any], raw_value: Any, fallback: Any) -> Any:
+    if raw_value is None:
+        return fallback
+
+    origin = get_origin(expected_type)
+    if origin is None:
+        expected = expected_type
+        if expected is Any:
+            return raw_value
+        if isinstance(expected, type) and isinstance(raw_value, expected):
+            return raw_value
+        return _coerce_primitive(expected, raw_value)
+
+    args = get_args(expected_type)
+    if origin in (dict, MutableMapping, Mapping):
+        return _deserialize_mapping(expected_type, raw_value, args)
+    if origin in (list, tuple, Iterable):
+        return _deserialize_sequence(expected_type, raw_value, args)
+
+    return raw_value
+
+
+def _iter_setting_pairs(raw: Any) -> Iterator[tuple[Any, Any]]:
+    if isinstance(raw, Mapping):
+        yield from raw.items()
+        return
+    if not isinstance(raw, Iterable) or isinstance(raw, (str, bytes)):
+        return
+    for item in raw:
+        if isinstance(item, Mapping):
+            yield from item.items()
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            yield item[0], item[1]
+
+
+class SettingsStore:
+    def __init__(
+        self,
+        qsettings: QSettings | None = None,
+        migrate_legacy: bool = True,
+        resources: ResourceSettings | None = None,
+    ) -> None:
+        self.resources = resources or ResourceSettings()
+        self.runtime = RuntimeSettings()
+        self.ml = MLTuningSettings()
+        self.profile = UserProfileSettings()
+        self._settings = qsettings or QSettings(
+            SETTINGS_ORGANIZATION, SETTINGS_APPLICATION
+        )
+        self._ensure_schema_version()
+        if migrate_legacy:
+            self._maybe_migrate_legacy_json()
+        self._load_group("runtime", self.runtime)
+        self._load_group("ml", self.ml)
+        self._load_group("profile", self.profile)
+        self._apply_env_overrides()
+        self._normalize_loaded_settings()
+
+    def _ensure_schema_version(self) -> None:
+        stored_version = self._settings.value("metadata/schema_version", type=str)
+        if stored_version != SETTINGS_SCHEMA_VERSION:
+            self._settings.setValue("metadata/schema_version", SETTINGS_SCHEMA_VERSION)
+            self._settings.sync()
+
+    def _maybe_migrate_legacy_json(self) -> None:
+        legacy_file = os.path.abspath(LEGACY_USER_SETTINGS_FILE)
+        if not os.path.exists(legacy_file):
+            return
+        try:
+            with open(legacy_file, encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            return
+
+        for key, value in payload.items():
+            if key not in LEGACY_KEY_TO_SECTION_FIELD:
+                continue
+            section_name, field_name = LEGACY_KEY_TO_SECTION_FIELD[key]
+            self._set_field(section_name, field_name, value)
+
+        self.save_runtime()
+        self.save_ml()
+        self.save_profile()
+        try:
+            os.replace(legacy_file, legacy_file + ".legacy")
+        except OSError:
+            pass
+
+    def _apply_env_overrides(self) -> None:
+        overrides = {
+            "runtime": self.runtime,
+            "ml": self.ml,
+            "profile": self.profile,
+        }
+        for section_name, section_obj in overrides.items():
+            type_hints = get_type_hints(type(section_obj))
+            for field_info in fields(section_obj):
+                env_key = (
+                    f"{ENV_PREFIX}_{section_name.upper()}_{field_info.name.upper()}"
+                )
+                if env_key not in os.environ:
+                    continue
+                raw_value = os.environ[env_key]
+                expected_type = type_hints.get(field_info.name, field_info.type)
+                coerced = _deserialize_value(
+                    expected_type, raw_value, getattr(section_obj, field_info.name)
+                )
+                setattr(section_obj, field_info.name, coerced)
+
+    def _normalize_loaded_settings(self) -> None:
+        runtime_changed = False
+        ml_changed = False
+
+        intervals = self._coerce_tracking_intervals(self.runtime.tracking_intervals)
+        if not intervals:
+            intervals = _default_tracking_intervals()
+        if intervals != self.runtime.tracking_intervals:
+            self.runtime.tracking_intervals = intervals
+            runtime_changed = True
+
+        thresholds = self._merge_threshold_defaults(
+            self._coerce_threshold_mapping(self.ml.posture_thresholds)
+        )
+        if thresholds != self.ml.posture_thresholds:
+            self.ml.posture_thresholds = thresholds
+            ml_changed = True
+
+        weights = self._coerce_weight_list(self.ml.posture_weights)
+        if not self._is_valid_weight_list(weights):
+            weights = _default_posture_weights()
+        if weights != self.ml.posture_weights:
+            self.ml.posture_weights = weights
+            ml_changed = True
+
+        if self.profile.preferred_theme not in {"system", "light", "dark"}:
+            self.profile.preferred_theme = "system"
+            self.save_profile()
+
+        if runtime_changed:
+            self.save_runtime()
+        if ml_changed:
+            self.save_ml()
+
+    @staticmethod
+    def _coerce_tracking_intervals(raw: Any) -> dict[str, int]:
+        if isinstance(raw, str):
+            return SettingsStore._parse_interval_string(raw)
+        result: dict[str, int] = {}
+        for label, value in _iter_setting_pairs(raw):
+            minutes = SettingsStore._coerce_int(value)
+            if minutes is not None:
+                result[str(label).strip()] = minutes
+        return result
+
+    @staticmethod
+    def _parse_interval_string(payload: str) -> dict[str, int]:
+        payload = payload.strip()
+        if not payload:
+            return {}
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError:
+            decoded = None
+        if isinstance(decoded, Mapping):
+            return SettingsStore._coerce_tracking_intervals(decoded)
+        if isinstance(decoded, Iterable) and not isinstance(decoded, (str, bytes)):
+            return SettingsStore._coerce_tracking_intervals(list(decoded))
+
+        result: dict[str, int] = {}
+        fragments = [frag for frag in payload.split(",") if frag.strip()]
+        for fragment in fragments:
+            separator = ":" if ":" in fragment else "="
+            if separator not in fragment:
+                continue
+            label_part, minutes_part = fragment.split(separator, 1)
+            label = label_part.strip().strip("\"'{} ")
+            minutes = SettingsStore._coerce_int(minutes_part)
+            if minutes is not None:
+                result[label] = minutes
+        return result
+
+    @staticmethod
+    def _coerce_int(value: Any) -> int | None:
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _coerce_threshold_mapping(raw: Any) -> dict[str, float]:
+        if isinstance(raw, str):
+            raw = SettingsStore._loads_flexible(raw)
+        result: dict[str, float] = {}
+        for key, raw_value in _iter_setting_pairs(raw):
+            value = SettingsStore._coerce_float(raw_value)
+            if value is not None:
+                result[str(key).strip()] = value
+        return result
+
+    @staticmethod
+    def _merge_threshold_defaults(raw: Mapping[str, float]) -> dict[str, float]:
+        merged = _default_posture_thresholds()
+        for key, value in raw.items():
+            if key in merged and value > 0:
+                merged[key] = value
+        return merged
+
+    @staticmethod
+    def _coerce_weight_list(raw: Any) -> list[float]:
+        if isinstance(raw, str):
+            raw = SettingsStore._loads_flexible(raw)
+        if isinstance(raw, Iterable) and not isinstance(raw, (str, bytes)):
+            result: list[float] = []
+            for item in raw:
+                value = SettingsStore._coerce_float(item)
+                if value is not None:
+                    result.append(value)
+            return result
+        if isinstance(raw, (int, float)):
+            return [float(raw)]
+        return []
+
+    @staticmethod
+    def _is_valid_weight_list(raw: Iterable[float]) -> bool:
+        weights = list(raw)
+        return (
+            len(weights) == len(DEFAULT_POSTURE_WEIGHTS)
+            and all(weight >= 0 for weight in weights)
+            and sum(weights) > 0
+        )
+
+    @staticmethod
+    def _coerce_float(value: Any) -> float | None:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _loads_flexible(payload: str) -> Any:
+        payload = payload.strip()
+        if not payload:
+            return None
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+
+    def _load_group(self, group_name: str, section_obj: Any) -> None:
+        self._settings.beginGroup(group_name)
+        try:
+            type_hints = get_type_hints(type(section_obj))
+            for field_info in fields(section_obj):
+                default = getattr(section_obj, field_info.name)
+                raw_value = self._settings.value(field_info.name, None)
+                expected_type = type_hints.get(field_info.name, field_info.type)
+                value = _deserialize_value(expected_type, raw_value, default)
+                setattr(section_obj, field_info.name, value)
+        finally:
+            self._settings.endGroup()
+
+    def _save_group(self, group_name: str, section_obj: Any) -> None:
+        self._settings.beginGroup(group_name)
+        try:
+            for field_info in fields(section_obj):
+                value = getattr(section_obj, field_info.name)
+                self._settings.setValue(field_info.name, _serialize_value(value))
+        finally:
+            self._settings.endGroup()
+        self._settings.sync()
+
+    def save_runtime(self) -> None:
+        self._save_group("runtime", self.runtime)
+
+    def save_ml(self) -> None:
+        self._save_group("ml", self.ml)
+
+    def save_profile(self) -> None:
+        self._save_group("profile", self.profile)
+
+    def _set_field(self, section_name: str, field_name: str, value: Any) -> None:
+        section = getattr(self, section_name, None)
+        if section is None:
+            raise KeyError(f"Unknown settings section: {section_name}")
+
+        for field_info in fields(section):
+            if field_info.name != field_name:
+                continue
+            type_hints = get_type_hints(type(section))
+            expected_type = type_hints.get(field_info.name, field_info.type)
+            coerced = _deserialize_value(
+                expected_type, value, getattr(section, field_name)
+            )
+            setattr(section, field_name, coerced)
+            return
+
+        raise KeyError(f"Unknown field {field_name} in section {section_name}")
+
+    def update_runtime(self, **overrides: Any) -> None:
+        for field_name, value in overrides.items():
+            self._set_field("runtime", field_name, value)
+        self.save_runtime()
+
+    def update_ml(self, **overrides: Any) -> None:
+        for field_name, value in overrides.items():
+            self._set_field("ml", field_name, value)
+        self.save_ml()
+
+    def update_profile(self, **overrides: Any) -> None:
+        for field_name, value in overrides.items():
+            self._set_field("profile", field_name, value)
+        self.save_profile()
+
+
+LEGACY_KEY_TO_SECTION_FIELD: dict[str, tuple[str, str]] = {
+    "POSTURE_WEIGHTS": ("ml", "posture_weights"),
+    "POSTURE_THRESHOLDS": ("ml", "posture_thresholds"),
+    "MIN_DETECTION_CONFIDENCE": ("ml", "min_detection_confidence"),
+    "MIN_TRACKING_CONFIDENCE": ("ml", "min_tracking_confidence"),
+    "SCORE_BUFFER_SIZE": ("ml", "score_buffer_size"),
+    "SCORE_WINDOW_SIZE": ("ml", "score_window_size"),
+    "SCORE_THRESHOLD": ("ml", "score_threshold"),
+    "MODEL_COMPLEXITY": ("ml", "model_complexity"),
+    "DEFAULT_CAMERA_ID": ("runtime", "default_camera_id"),
+    "DEFAULT_FPS": ("runtime", "default_fps"),
+    "FRAME_WIDTH": ("runtime", "frame_width"),
+    "FRAME_HEIGHT": ("runtime", "frame_height"),
+    "NOTIFICATION_COOLDOWN": ("runtime", "notification_cooldown"),
+    "POOR_POSTURE_THRESHOLD": ("runtime", "poor_posture_threshold"),
+    "DEFAULT_POSTURE_MESSAGE": ("runtime", "default_posture_message"),
+    "TRACKING_INTERVALS": ("runtime", "tracking_intervals"),
+    "TRACKING_DURATION_MINUTES": ("runtime", "tracking_duration_minutes"),
+    "ENABLE_DATABASE_LOGGING": ("runtime", "enable_database_logging"),
+    "DB_WRITE_INTERVAL_SECONDS": ("runtime", "db_write_interval_seconds"),
+    "NOTIFICATIONS_ENABLED": ("runtime", "notifications_enabled"),
+    "FOCUS_MODE_ENABLED": ("runtime", "focus_mode_enabled"),
+    "ADAPTIVE_RESOLUTION": ("runtime", "adaptive_resolution"),
+    "HAS_COMPLETED_ONBOARDING": ("profile", "has_completed_onboarding"),
+    "BASELINE_POSTURE_SCORE": ("profile", "baseline_posture_score"),
+    "BASELINE_NECK_ANGLE": ("profile", "baseline_neck_angle"),
+    "BASELINE_SHOULDER_LEVEL": ("profile", "baseline_shoulder_level"),
+    "PREFERRED_THEME": ("profile", "preferred_theme"),
+}
+
+
+class SettingsService:
+    """Façade over persistent settings with structured accessors."""
+
+    def __init__(self, store: SettingsStore | None = None) -> None:
+        self._store = store or SettingsStore()
+
+    @property
+    def resources(self) -> ResourceSettings:
+        return self._store.resources
+
+    @property
+    def runtime(self) -> RuntimeSettings:
+        return self._store.runtime
+
+    @property
+    def ml(self) -> MLTuningSettings:
+        return self._store.ml
+
+    @property
+    def profile(self) -> UserProfileSettings:
+        return self._store.profile
+
+    def update_runtime(self, **overrides: Any) -> None:
+        self._store.update_runtime(**overrides)
+
+    def update_ml(self, **overrides: Any) -> None:
+        self._store.update_ml(**overrides)
+
+    def update_profile(self, **overrides: Any) -> None:
+        self._store.update_profile(**overrides)
+
+    def get_posture_landmarks(self) -> list[Any]:
+        return POSTURE_LANDMARKS
+
+    @classmethod
+    def for_testing(cls, path: os.PathLike[str] | str | None = None) -> SettingsService:
+        if path is None:
+            temp_dir = tempfile.gettempdir()
+            path = os.path.join(temp_dir, f"posture_test_{uuid.uuid4().hex}.ini")
+        settings_path = Path(path)
+        qsettings = QSettings(str(settings_path), QSettings.Format.IniFormat)
+        qsettings.clear()
+        resources = ResourceSettings(
+            default_db_name=str(settings_path.parent / "posture_data.db")
+        )
+        store = SettingsStore(
+            qsettings=qsettings,
+            migrate_legacy=False,
+            resources=resources,
+        )
+        return cls(store)

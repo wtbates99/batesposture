@@ -1,0 +1,81 @@
+name: posture checks
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up project Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      # cv2 needs libGL; PyQt6 needs xcb/EGL even in offscreen mode.
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libglib2.0-0 \
+            libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xfixes0 libxkbcommon-x11-0 libegl1
+
+      - name: Install dependencies
+        run: uv sync --locked --all-groups
+
+      - name: Run quality checks
+        if: runner.os == 'Linux'
+        run: uv run pre-commit run --all-files
+
+      - name: Run regression tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run python -m pytest
+
+      - name: Build wheel
+        if: runner.os == 'Linux'
+        run: uv build --wheel --out-dir dist
+
+      - name: Verify packaged application resources
+        if: runner.os == 'Linux'
+        run: >-
+          uv run python -c "import glob, zipfile;
+          wheel = glob.glob('dist/*.whl')[0];
+          names = set(zipfile.ZipFile(wheel).namelist());
+          required = {'batesposture/static/icon.png', 'batesposture/static/icon.ico',
+          'batesposture/static/icon.svg'};
+          missing = required - names;
+          assert not missing, f'Missing wheel resources: {sorted(missing)}'"
+
+      - name: Check PR title
+        if: runner.os == 'Linux' && github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: uv run python .github/workflows/title_check.py $(pwd) "$PR_TITLE"

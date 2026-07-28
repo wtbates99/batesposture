@@ -1,0 +1,532 @@
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+
+import cv2
+from PyQt6 import sip
+from PyQt6.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+    QWizard,
+    QWizardPage,
+)
+
+from ..ml.pose_detector import PoseDetector
+from ..services.camera_capture import open_camera
+from ..services.settings_service import (
+    CALIBRATION_DURATION_SECONDS,
+    CALIBRATION_TIMEOUT_MARGIN_SECONDS,
+    SettingsService,
+)
+from .theme import wizard_stylesheet
+
+
+@dataclass
+class CalibrationResult:
+    posture_score: float
+    neck_angle: float
+    shoulder_delta: float
+
+
+class CameraPreviewWidget(QLabel):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("cameraPreview")
+        self.setText(self.tr("Camera preview will appear here"))
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._camera_id = 0
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._update_frame)
+        self._capture: cv2.VideoCapture | None = None
+
+    def start(self, camera_id: int) -> None:
+        self.stop()
+        self._camera_id = camera_id
+        capture = open_camera(self._camera_id)
+        if capture is None:
+            self.setText(self.tr("Unable to open camera"))
+            return
+        self._capture = capture
+        self._timer.start(40)
+
+    def stop(self) -> None:
+        if self._timer.isActive():
+            self._timer.stop()
+        if self._capture:
+            self._capture.release()
+            self._capture = None
+        self.clear()
+
+    def _update_frame(self) -> None:
+        if not self._capture:
+            return
+        ret, frame = self._capture.read()
+        if not ret:
+            self.setText(self.tr("Camera feed unavailable"))
+            return
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = frame.shape
+        image = QImage(frame.data, w, h, ch * w, QImage.Format.Format_RGB888)
+        pixmap = QPixmap.fromImage(image).scaled(
+            self.width(),
+            self.height(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.setPixmap(pixmap)
+
+    def resizeEvent(self, event):  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        if self.pixmap():
+            self.setPixmap(
+                self.pixmap().scaled(
+                    self.width(),
+                    self.height(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+
+
+class CalibrationWorker(QObject):
+    """Background QObject that captures a baseline posture sample on a worker QThread.
+
+    Opens the camera, runs PoseDetector for ``duration_seconds`` (default:
+    CALIBRATION_DURATION_SECONDS = 6), averages posture_score / neck_angle /
+    shoulder_vertical_delta across collected frames, and emits either
+    ``finished(CalibrationResult)`` or ``failed(str)``.
+
+    A QTimer in CalibrationPage cancels the worker after
+    ``duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS`` to handle camera hangs.
+    """
+
+    finished = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    frame_ready = pyqtSignal(object)
+
+    def __init__(
+        self,
+        settings: SettingsService,
+        duration_seconds: int = CALIBRATION_DURATION_SECONDS,
+    ) -> None:
+        super().__init__()
+        self._settings = settings
+        self._duration = duration_seconds
+        self._stop = False
+
+    def cancel(self) -> None:
+        self._stop = True
+
+    @property
+    def duration(self) -> int:
+        return self._duration
+
+    @pyqtSlot()
+    def run(self) -> None:
+        capture = None
+        try:
+            camera_id = self._settings.runtime.default_camera_id
+            capture = open_camera(camera_id)
+            if capture is None:
+                self.failed.emit(
+                    QApplication.translate(
+                        "CalibrationWorker", "Unable to access camera"
+                    )
+                )
+                return
+
+            detector = PoseDetector(self._settings)
+            start_time = time.monotonic()
+            collected: dict[str, list] = {
+                "posture_score": [],
+                "neck_angle": [],
+                "shoulder_delta": [],
+            }
+
+            while not self._stop and time.monotonic() - start_time < self._duration:
+                ret, frame = capture.read()
+                if not ret:
+                    time.sleep(0.05)
+                    continue
+                self.frame_ready.emit(frame)
+                _, score, result_bundle = detector.process_frame(frame)
+                if not result_bundle:
+                    time.sleep(0.05)
+                    continue
+                metrics = (
+                    result_bundle.metrics if hasattr(result_bundle, "metrics") else {}
+                )
+                collected["posture_score"].append(metrics.get("posture_score", score))
+                collected["neck_angle"].append(metrics.get("neck_angle", 0.0))
+                collected["shoulder_delta"].append(
+                    metrics.get("shoulder_vertical_delta", 0.0)
+                )
+                time.sleep(0.05)
+
+        except Exception as exc:  # noqa: BLE001 - propagate error to UI
+            self.failed.emit(str(exc))
+            return
+        finally:
+            if capture:
+                capture.release()
+
+        if self._stop:
+            self.failed.emit(
+                QApplication.translate("CalibrationWorker", "Calibration cancelled")
+            )
+            return
+
+        if not collected["posture_score"]:
+            self.failed.emit(
+                QApplication.translate("CalibrationWorker", "No posture data captured")
+            )
+            return
+
+        result = CalibrationResult(
+            posture_score=float(
+                sum(collected["posture_score"]) / len(collected["posture_score"])
+            ),
+            neck_angle=float(
+                sum(collected["neck_angle"]) / len(collected["neck_angle"])
+            ),
+            shoulder_delta=float(
+                sum(collected["shoulder_delta"]) / len(collected["shoulder_delta"])
+            ),
+        )
+        self.finished.emit(result)
+
+
+class WelcomePage(QWizardPage):
+    """Opening wizard page — introduces the three-step onboarding flow."""
+
+    def __init__(self, icon_path: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setTitle(self.tr("Welcome"))
+        self.setSubTitle(
+            self.tr("A short calibration personalizes your posture score.")
+        )
+
+        brand_icon = QLabel()
+        pixmap = QPixmap(icon_path)
+        if not pixmap.isNull():
+            brand_icon.setPixmap(
+                pixmap.scaled(
+                    56,
+                    56,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+        brand_name = QLabel("BatesPosture")
+        brand_name.setObjectName("brandName")
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(12)
+        brand_row.addWidget(brand_icon)
+        brand_row.addWidget(brand_name)
+        brand_row.addStretch()
+
+        hero = QLabel(
+            self.tr(
+                "Sit naturally while BatesPosture learns your neutral alignment. Your camera stays local to this device."
+            )
+        )
+        hero.setObjectName("heroText")
+        hero.setWordWrap(True)
+
+        tips = QLabel(
+            self.tr(
+                "1. Use a well-lit space\n"
+                "2. Position the camera near eye level\n"
+                "3. Keep your head and shoulders in frame"
+            )
+        )
+        tips.setObjectName("supportText")
+        tips.setWordWrap(True)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(14)
+        layout.addLayout(brand_row)
+        layout.addSpacing(8)
+        layout.addWidget(hero)
+        layout.addWidget(tips)
+        layout.addStretch(1)
+        self.setLayout(layout)
+
+
+class CameraSetupPage(QWizardPage):
+    """Wizard page showing a live camera preview for framing guidance.
+
+    Starts CameraPreviewWidget when the page is entered and stops it on exit
+    to release the capture handle before CalibrationWorker opens the same camera.
+    """
+
+    def __init__(
+        self, settings: SettingsService, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self._settings = settings
+        self.setTitle(self.tr("Align your camera"))
+        self.setSubTitle(
+            self.tr("Center yourself and ensure your upper body is in frame.")
+        )
+
+        self.preview = CameraPreviewWidget()
+        self.preview.setMinimumHeight(240)
+
+        guidance = QLabel(
+            self.tr(
+                "Adjust your seating so your head and shoulders are visible. Use natural lighting when possible."
+            )
+        )
+        guidance.setObjectName("supportText")
+        guidance.setWordWrap(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.preview)
+        layout.addSpacing(8)
+        layout.addWidget(guidance)
+        layout.addStretch(1)
+        self.setLayout(layout)
+
+    def initializePage(self) -> None:  # noqa: N802 - Qt override
+        self.preview.start(self._settings.runtime.default_camera_id)
+
+    def cleanupPage(self) -> None:  # noqa: N802 - Qt override
+        self.preview.stop()
+
+    def stop_preview(self) -> None:
+        """Ensures the preview capture is released when leaving the page."""
+        self.preview.stop()
+
+
+class CalibrationPage(QWizardPage):
+    """Wizard page that runs a 6-second baseline calibration via CalibrationWorker.
+
+    Shows a live camera feed before and after calibration so the user can see
+    themselves while sitting still. During calibration the worker emits each raw
+    frame via ``frame_ready`` which is forwarded to the same preview label.
+    The page is only "complete" (wizard's Next/Finish enabled) after a successful
+    CalibrationResult is received. A timeout timer cancels a hung worker after
+    duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS seconds.
+    """
+
+    def __init__(
+        self, settings: SettingsService, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self._settings = settings
+        self.setTitle(self.tr("Capture your baseline"))
+        self.setSubTitle(
+            self.tr(
+                "We'll measure a short sample so posture insights match your neutral stance."
+            )
+        )
+
+        self.preview = CameraPreviewWidget()
+        self.preview.setMinimumHeight(260)
+
+        self.status_label = QLabel(
+            self.tr(
+                'When you\'re ready, sit comfortably and press "Start calibration".'
+            )
+        )
+        self.status_label.setObjectName("supportText")
+        self.status_label.setWordWrap(True)
+
+        self.results_label = QLabel("")
+        self.results_label.setObjectName("resultPanel")
+        self.results_label.setWordWrap(True)
+        self.results_label.setVisible(False)
+
+        self.start_button = QPushButton(self.tr("Start calibration"))
+        self.start_button.setObjectName("primaryButton")
+        self.start_button.clicked.connect(self._begin_calibration)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.preview)
+        layout.addSpacing(8)
+        layout.addWidget(self.status_label)
+        layout.addSpacing(12)
+        layout.addWidget(self.start_button)
+        layout.addSpacing(12)
+        layout.addWidget(self.results_label)
+        layout.addStretch(1)
+        self.setLayout(layout)
+
+        self._thread: QThread | None = None
+        self._worker: CalibrationWorker | None = None
+        self._metrics: CalibrationResult | None = None
+        self._timeout: QTimer | None = None
+
+    def initializePage(self) -> None:  # noqa: N802 - Qt override
+        self.preview.start(self._settings.runtime.default_camera_id)
+
+    def cleanupPage(self) -> None:  # noqa: N802 - Qt override
+        self.preview.stop()
+        self._cleanup_worker()
+
+    def _begin_calibration(self) -> None:
+        if self._thread and self._thread.isRunning():
+            return
+        # Release the idle preview so the worker can open the same camera.
+        self.preview.stop()
+        self.start_button.setEnabled(False)
+        self.status_label.setText(
+            self.tr("Collecting data... Keep still for six seconds.")
+        )
+
+        worker = CalibrationWorker(self._settings)
+        thread = QThread(self)
+        worker.moveToThread(thread)
+
+        worker.frame_ready.connect(self._display_worker_frame)
+        worker.finished.connect(self._handle_success)
+        worker.failed.connect(self._handle_failure)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.started.connect(worker.run)
+
+        self._worker = worker
+        self._thread = thread
+        thread.start()
+
+        if not self._timeout:
+            self._timeout = QTimer(self)
+            self._timeout.setSingleShot(True)
+            self._timeout.timeout.connect(self._handle_timeout)
+        self._timeout.start(
+            (worker.duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS) * 1000
+        )
+
+    def _display_worker_frame(self, frame) -> None:
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = frame_rgb.shape
+        image = QImage(frame_rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
+        pixmap = QPixmap.fromImage(image).scaled(
+            self.preview.width(),
+            self.preview.height(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.preview.setPixmap(pixmap)
+
+    def _handle_success(self, result: CalibrationResult) -> None:
+        self._metrics = result
+        self.start_button.setEnabled(True)
+        self.status_label.setText(self.tr("Baseline captured."))
+        self.results_label.setText(
+            self.tr(
+                "- Average posture score: {score:.1f}%\n"
+                "- Neck angle: {neck:.1f} deg\n"
+                "- Shoulder balance delta: {delta:.3f}"
+            ).format(
+                score=result.posture_score,
+                neck=result.neck_angle,
+                delta=result.shoulder_delta,
+            )
+        )
+        self.results_label.setVisible(True)
+        self._cleanup_worker()
+        self.preview.start(self._settings.runtime.default_camera_id)
+        self.completeChanged.emit()
+
+    def _handle_failure(self, message: str) -> None:
+        self.start_button.setEnabled(True)
+        self.status_label.setText(self.tr("Calibration failed"))
+        QMessageBox.warning(self, self.tr("Calibration"), message)
+        self._cleanup_worker()
+        self.preview.start(self._settings.runtime.default_camera_id)
+
+    def _handle_timeout(self) -> None:
+        if self._worker:
+            self._worker.cancel()
+        else:
+            self._cleanup_worker()
+
+    def _cleanup_worker(self) -> None:
+        if self._timeout and self._timeout.isActive():
+            self._timeout.stop()
+        thread = self._thread
+        worker = self._worker
+        self._thread = None
+        self._worker = None
+
+        def _is_alive(obj: QObject | None) -> bool:
+            return obj is not None and not sip.isdeleted(obj)
+
+        if _is_alive(thread):
+            if thread.isRunning():
+                thread.quit()
+                thread.wait(2000)
+            thread.deleteLater()
+        if _is_alive(worker):
+            worker.deleteLater()
+
+    def isComplete(self) -> bool:  # noqa: N802 - Qt override
+        return self._metrics is not None
+
+    def metrics(self) -> CalibrationResult | None:
+        return self._metrics
+
+
+class OnboardingWizard(QWizard):
+    def __init__(
+        self, settings_service: SettingsService, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self._settings = settings_service
+        self.setWindowTitle(self.tr("BatesPosture Setup"))
+        self.setOption(QWizard.WizardOption.IndependentPages, False)
+        self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
+        self.setMinimumSize(560, 600)
+        self.resize(620, 680)
+
+        self.welcome_page = WelcomePage(settings_service.resources.icon_path)
+        self.camera_page = CameraSetupPage(settings_service)
+        self.calibration_page = CalibrationPage(settings_service)
+
+        self._welcome_page_id = self.addPage(self.welcome_page)
+        self._camera_page_id = self.addPage(self.camera_page)
+        self._calibration_page_id = self.addPage(self.calibration_page)
+        self._last_page_id = self.currentId()
+        self.currentIdChanged.connect(self._handle_page_change)
+
+        self.button(QWizard.WizardButton.NextButton).setObjectName("primaryButton")
+        self.button(QWizard.WizardButton.FinishButton).setObjectName("primaryButton")
+        self.setStyleSheet(wizard_stylesheet(settings_service.profile.preferred_theme))
+
+    def accept(self) -> None:
+        metrics = self.calibration_page.metrics()
+        if metrics:
+            self._settings.update_profile(
+                has_completed_onboarding=True,
+                baseline_posture_score=metrics.posture_score,
+                baseline_neck_angle=metrics.neck_angle,
+                baseline_shoulder_level=metrics.shoulder_delta,
+            )
+        super().accept()
+
+    def _handle_page_change(self, page_id: int) -> None:
+        if self._last_page_id == self._camera_page_id and self.camera_page is not None:
+            self.camera_page.stop_preview()
+        self._last_page_id = page_id
+
+
+def run_onboarding_if_needed(
+    settings_service: SettingsService, parent: QWidget | None = None
+) -> bool:
+    if settings_service.profile.has_completed_onboarding:
+        return False
+    wizard = OnboardingWizard(settings_service, parent)
+    return wizard.exec() == QDialog.DialogCode.Accepted
