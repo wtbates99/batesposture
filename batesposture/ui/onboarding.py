@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
+    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -35,6 +35,7 @@ class CalibrationResult:
     posture_score: float
     neck_angle: float
     shoulder_delta: float
+    sample_count: int = 0
 
 
 class CameraPreviewWidget(QLabel):
@@ -112,6 +113,7 @@ class CalibrationWorker(QObject):
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
     frame_ready = pyqtSignal(object)
+    progress_changed = pyqtSignal(int, int, bool)
 
     def __init__(
         self,
@@ -159,7 +161,14 @@ class CalibrationWorker(QObject):
                     continue
                 self.frame_ready.emit(frame)
                 _, score, result_bundle = detector.process_frame(frame)
+                elapsed = time.monotonic() - start_time
+                remaining = max(0, self._duration - int(elapsed))
                 if not result_bundle:
+                    self.progress_changed.emit(
+                        min(99, int(elapsed / self._duration * 100)),
+                        remaining,
+                        False,
+                    )
                     time.sleep(0.05)
                     continue
                 metrics = (
@@ -169,6 +178,11 @@ class CalibrationWorker(QObject):
                 collected["neck_angle"].append(metrics.get("neck_angle", 0.0))
                 collected["shoulder_delta"].append(
                     metrics.get("shoulder_vertical_delta", 0.0)
+                )
+                self.progress_changed.emit(
+                    min(99, int(elapsed / self._duration * 100)),
+                    remaining,
+                    True,
                 )
                 time.sleep(0.05)
 
@@ -201,6 +215,7 @@ class CalibrationWorker(QObject):
             shoulder_delta=float(
                 sum(collected["shoulder_delta"]) / len(collected["shoulder_delta"])
             ),
+            sample_count=len(collected["posture_score"]),
         )
         self.finished.emit(result)
 
@@ -347,6 +362,12 @@ class CalibrationPage(QWizardPage):
         self.results_label.setWordWrap(True)
         self.results_label.setVisible(False)
 
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setVisible(False)
+
         self.start_button = QPushButton(self.tr("Start calibration"))
         self.start_button.setObjectName("primaryButton")
         self.start_button.clicked.connect(self._begin_calibration)
@@ -355,6 +376,7 @@ class CalibrationPage(QWizardPage):
         layout.addWidget(self.preview)
         layout.addSpacing(8)
         layout.addWidget(self.status_label)
+        layout.addWidget(self.progress_bar)
         layout.addSpacing(12)
         layout.addWidget(self.start_button)
         layout.addSpacing(12)
@@ -377,11 +399,17 @@ class CalibrationPage(QWizardPage):
     def _begin_calibration(self) -> None:
         if self._thread and self._thread.isRunning():
             return
+        self._metrics = None
+        self.completeChanged.emit()
         # Release the idle preview so the worker can open the same camera.
         self.preview.stop()
         self.start_button.setEnabled(False)
+        self.start_button.setText(self.tr("Calibrating…"))
+        self.results_label.setVisible(False)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
         self.status_label.setText(
-            self.tr("Collecting data... Keep still for six seconds.")
+            self.tr("Calibrating · 6s remaining · Looking for you…")
         )
 
         worker = CalibrationWorker(self._settings)
@@ -389,6 +417,7 @@ class CalibrationPage(QWizardPage):
         worker.moveToThread(thread)
 
         worker.frame_ready.connect(self._display_worker_frame)
+        worker.progress_changed.connect(self._update_progress)
         worker.finished.connect(self._handle_success)
         worker.failed.connect(self._handle_failure)
         worker.finished.connect(thread.quit)
@@ -409,6 +438,21 @@ class CalibrationPage(QWizardPage):
             (worker.duration + CALIBRATION_TIMEOUT_MARGIN_SECONDS) * 1000
         )
 
+    def _update_progress(
+        self, percent: int, remaining_seconds: int, person_detected: bool
+    ) -> None:
+        self.progress_bar.setValue(percent)
+        if person_detected:
+            detection = self.tr("Person detected")
+        else:
+            detection = self.tr("No posture detected — improve lighting or move back")
+        self.status_label.setText(
+            self.tr("Calibrating · {remaining}s remaining · {detection}").format(
+                remaining=remaining_seconds,
+                detection=detection,
+            )
+        )
+
     def _display_worker_frame(self, frame) -> None:
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w, ch = frame_rgb.shape
@@ -424,16 +468,18 @@ class CalibrationPage(QWizardPage):
     def _handle_success(self, result: CalibrationResult) -> None:
         self._metrics = result
         self.start_button.setEnabled(True)
-        self.status_label.setText(self.tr("Baseline captured."))
+        self.start_button.setText(self.tr("Calibrate again"))
+        self.progress_bar.setValue(100)
+        self.status_label.setText(self.tr("Baseline captured — you're ready to go."))
+        quality = self.tr("Good") if result.sample_count >= 20 else self.tr("Limited")
         self.results_label.setText(
             self.tr(
-                "- Average posture score: {score:.1f}%\n"
-                "- Neck angle: {neck:.1f} deg\n"
-                "- Shoulder balance delta: {delta:.3f}"
+                "Baseline score: {score:.0f}%\n"
+                "Calibration quality: {quality} · {samples} samples"
             ).format(
                 score=result.posture_score,
-                neck=result.neck_angle,
-                delta=result.shoulder_delta,
+                quality=quality,
+                samples=result.sample_count,
             )
         )
         self.results_label.setVisible(True)
@@ -443,8 +489,15 @@ class CalibrationPage(QWizardPage):
 
     def _handle_failure(self, message: str) -> None:
         self.start_button.setEnabled(True)
-        self.status_label.setText(self.tr("Calibration failed"))
-        QMessageBox.warning(self, self.tr("Calibration"), message)
+        self.start_button.setText(self.tr("Try calibration again"))
+        self.progress_bar.setVisible(False)
+        self.status_label.setText(self.tr("Calibration couldn't be completed."))
+        self.results_label.setText(
+            self.tr(
+                "{message}\n\nCheck your framing and lighting, then try again."
+            ).format(message=message)
+        )
+        self.results_label.setVisible(True)
         self._cleanup_worker()
         self.preview.start(self._settings.runtime.default_camera_id)
 
@@ -479,6 +532,12 @@ class CalibrationPage(QWizardPage):
     def metrics(self) -> CalibrationResult | None:
         return self._metrics
 
+    def stop(self) -> None:
+        self.preview.stop()
+        if self._worker:
+            self._worker.cancel()
+        self._cleanup_worker()
+
 
 class OnboardingWizard(QWizard):
     def __init__(
@@ -504,6 +563,9 @@ class OnboardingWizard(QWizard):
 
         self.button(QWizard.WizardButton.NextButton).setObjectName("primaryButton")
         self.button(QWizard.WizardButton.FinishButton).setObjectName("primaryButton")
+        self.button(QWizard.WizardButton.FinishButton).setText(
+            self.tr("Finish & start tracking")
+        )
         self.setStyleSheet(wizard_stylesheet(settings_service.profile.preferred_theme))
 
     def accept(self) -> None:
@@ -515,7 +577,16 @@ class OnboardingWizard(QWizard):
                 baseline_neck_angle=metrics.neck_angle,
                 baseline_shoulder_level=metrics.shoulder_delta,
             )
+        self._stop_camera_activity()
         super().accept()
+
+    def reject(self) -> None:
+        self._stop_camera_activity()
+        super().reject()
+
+    def _stop_camera_activity(self) -> None:
+        self.camera_page.stop_preview()
+        self.calibration_page.stop()
 
     def _handle_page_change(self, page_id: int) -> None:
         if self._last_page_id == self._camera_page_id and self.camera_page is not None:
@@ -524,9 +595,11 @@ class OnboardingWizard(QWizard):
 
 
 def run_onboarding_if_needed(
-    settings_service: SettingsService, parent: QWidget | None = None
+    settings_service: SettingsService,
+    parent: QWidget | None = None,
+    force: bool = False,
 ) -> bool:
-    if settings_service.profile.has_completed_onboarding:
+    if settings_service.profile.has_completed_onboarding and not force:
         return False
     wizard = OnboardingWizard(settings_service, parent)
     return wizard.exec() == QDialog.DialogCode.Accepted

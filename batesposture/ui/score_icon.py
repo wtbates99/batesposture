@@ -3,13 +3,15 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 
+from .theme import score_color_hex
+
 ICON_SIZE = 64
 
 
 def create_score_icon(score: float) -> QIcon:
     """Render a compact, color-coded posture score for the system tray."""
     bounded_score = max(0.0, min(100.0, score))
-    color = QColor.fromHsv(round(bounded_score * 1.2), 185, 205)
+    color = QColor(score_color_hex(bounded_score))
 
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)

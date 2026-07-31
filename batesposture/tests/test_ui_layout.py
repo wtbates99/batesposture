@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QLabel, QScrollArea
 
 from ..services.settings_service import SettingsService, SettingsStore
 from ..ui.dashboard import PostureDashboard
-from ..ui.onboarding import OnboardingWizard
+from ..ui.onboarding import CalibrationPage, OnboardingWizard
 from ..ui.settings_dialog import SettingsDialog
 from ..ui.theme import DARK
 
@@ -47,7 +47,7 @@ def test_dashboard_stat_grid_remains_readable_at_minimum_size(qapp):
         for label in dashboard.findChildren(QLabel)
         if label.objectName() == "statCard"
     ]
-    assert len(stats) == 6
+    assert len(stats) == 5
     assert all(stat.width() >= 150 and stat.height() >= 54 for stat in stats)
     assert not dashboard.video_label.geometry().intersects(
         dashboard.sparkline.geometry()
@@ -56,11 +56,45 @@ def test_dashboard_stat_grid_remains_readable_at_minimum_size(qapp):
     dashboard.close()
 
 
+def test_dashboard_makes_paused_and_tracking_states_visible(qapp):
+    dashboard = PostureDashboard(78.0, "light")
+
+    dashboard.set_tracking_state("paused")
+
+    assert dashboard.video_overlay.isVisible() is False
+    dashboard.show()
+    qapp.processEvents()
+    assert dashboard.video_overlay.isVisible()
+    assert "Paused" in dashboard.subtitle.text()
+
+    dashboard.set_tracking_state("tracking")
+    assert not dashboard.video_overlay.isVisible()
+    assert dashboard.subtitle.text() == "Tracking posture"
+    dashboard.close()
+
+
+def test_calibration_progress_reports_detection_state(qapp, tmp_path):
+    settings = SettingsService.for_testing(tmp_path / "calibration_progress.ini")
+    page = CalibrationPage(settings)
+
+    page._update_progress(50, 3, False)
+
+    assert page.progress_bar.value() == 50
+    assert "No posture detected" in page.status_label.text()
+
+
+def test_settings_camera_picker_only_shows_verified_ids(qapp, tmp_path):
+    settings = SettingsService.for_testing(tmp_path / "camera_picker.ini")
+    dialog = SettingsDialog(settings, available_camera_ids=[0, 2])
+
+    assert [dialog.camera_combo.itemData(i) for i in range(2)] == [0, 2]
+    assert dialog.camera_combo.count() == 2
+    dialog.close()
+
+
 def test_onboarding_has_visible_brand_asset(qapp, tmp_path):
     settings = SettingsService.for_testing(tmp_path / "onboarding_layout.ini")
     wizard = OnboardingWizard(settings)
-    wizard.show()
-    qapp.processEvents()
 
     pixmaps = [
         label.pixmap()

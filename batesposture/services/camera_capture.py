@@ -30,3 +30,23 @@ def open_camera(camera_id: int) -> cv2.VideoCapture | None:
         capture.release()
     logger.error("Failed to open camera %s on %s", camera_id, sys.platform)
     return None
+
+
+def discover_camera_ids(
+    max_index: int = 5, active_camera_id: int | None = None
+) -> list[int]:
+    """Return camera indices that can actually be opened.
+
+    ``active_camera_id`` is included without probing because the running capture
+    already proves that it exists and a second open commonly fails.
+    """
+    discovered: list[int] = []
+    for camera_id in range(max_index):
+        if camera_id == active_camera_id:
+            discovered.append(camera_id)
+            continue
+        capture = open_camera(camera_id)
+        if capture is not None:
+            discovered.append(camera_id)
+            capture.release()
+    return discovered

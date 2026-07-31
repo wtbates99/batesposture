@@ -12,6 +12,7 @@ from PyQt6.QtGui import QIcon
 from ..ml.pose_detector import PoseDetectionResult
 from ..services.settings_service import SettingsService
 from ..ui import tray as tray_module
+from ..ui.dashboard import PostureDashboard
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -303,3 +304,45 @@ def test_tracking_resumes_when_human_returns(qapp, tmp_path, monkeypatch):
     assert tray.last_db_save is None
     assert tray._continuous_tracking_start == resume_time
     assert tray._break_reminder_sent is False
+
+
+def test_selected_interval_is_loaded_and_persisted(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+
+    tray.set_interval(15)
+
+    assert tray.tracking_interval == 15
+    assert settings.runtime.selected_tracking_interval == 15
+    tray.hide()
+
+
+def test_cancelled_onboarding_keeps_automatic_schedule_idle(
+    qapp, tmp_path, monkeypatch
+):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+
+    tray._check_interval()
+
+    assert tray.last_tracking_time is None
+    assert not tray.toggle_tracking_action.isEnabled()
+    tray.hide()
+
+
+def test_scheduled_stop_keeps_dashboard_with_countdown(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    dashboard = PostureDashboard(78.0, "light")
+    tray.video_window = dashboard
+    tray.tracking_enabled = True
+    tray.tracking_interval = 30
+    tray.last_tracking_time = datetime.now()
+    tray._auto_schedule_enabled = True
+
+    tray._stop_interval_tracking()
+    tray._check_interval()
+
+    assert tray.video_window is dashboard
+    assert tray.toggle_dashboard_action.isEnabled()
+    assert dashboard.subtitle.text().startswith("Next scan in")
+    dashboard.close()
+    tray.video_window = None
+    tray.hide()

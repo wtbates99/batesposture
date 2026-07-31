@@ -30,3 +30,26 @@ def test_testing_settings_keep_all_writes_in_temporary_directory(tmp_path):
     service = settings_module.SettingsService.for_testing(tmp_path / "settings.ini")
 
     assert service.resources.default_db_name == str(tmp_path / "posture_data.db")
+
+
+def test_selected_tracking_interval_persists(tmp_path):
+    settings_path = tmp_path / "settings.ini"
+    service = settings_module.SettingsService.for_testing(settings_path)
+    service.update_runtime(selected_tracking_interval=15)
+
+    reloaded = settings_module.SettingsStore(
+        qsettings=QSettings(str(settings_path), QSettings.Format.IniFormat),
+        migrate_legacy=False,
+    )
+
+    assert reloaded.runtime.selected_tracking_interval == 15
+
+
+def test_missing_selected_interval_falls_back_to_available_value(tmp_path):
+    qsettings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    qsettings.setValue("runtime/tracking_intervals", '{"Hourly": 60}')
+    qsettings.setValue("runtime/selected_tracking_interval", 30)
+
+    store = settings_module.SettingsStore(qsettings=qsettings, migrate_legacy=False)
+
+    assert store.runtime.selected_tracking_interval == 60

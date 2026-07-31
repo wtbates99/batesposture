@@ -151,6 +151,7 @@ class RuntimeSettings:
     tracking_intervals: dict[str, int] = field(
         default_factory=_default_tracking_intervals
     )
+    selected_tracking_interval: int = 30
     tracking_duration_minutes: int = 2
     enable_database_logging: bool = False
     db_write_interval_seconds: int = 900
@@ -382,6 +383,11 @@ class SettingsStore:
         if intervals != self.runtime.tracking_intervals:
             self.runtime.tracking_intervals = intervals
             runtime_changed = True
+        if self.runtime.selected_tracking_interval not in intervals.values():
+            self.runtime.selected_tracking_interval = (
+                30 if 30 in intervals.values() else next(iter(intervals.values()))
+            )
+            runtime_changed = True
 
         thresholds = self._merge_threshold_defaults(
             self._coerce_threshold_mapping(self.ml.posture_thresholds)
@@ -594,6 +600,7 @@ LEGACY_KEY_TO_SECTION_FIELD: dict[str, tuple[str, str]] = {
     "POOR_POSTURE_THRESHOLD": ("runtime", "poor_posture_threshold"),
     "DEFAULT_POSTURE_MESSAGE": ("runtime", "default_posture_message"),
     "TRACKING_INTERVALS": ("runtime", "tracking_intervals"),
+    "SELECTED_TRACKING_INTERVAL": ("runtime", "selected_tracking_interval"),
     "TRACKING_DURATION_MINUTES": ("runtime", "tracking_duration_minutes"),
     "ENABLE_DATABASE_LOGGING": ("runtime", "enable_database_logging"),
     "DB_WRITE_INTERVAL_SECONDS": ("runtime", "db_write_interval_seconds"),

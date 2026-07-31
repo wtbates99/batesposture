@@ -72,6 +72,29 @@ def theme_colors(preference: str) -> ThemeColors:
     return DARK if is_dark_theme(preference) else LIGHT
 
 
+def score_grade(score: float) -> str:
+    """Return the user-facing score band used across every surface."""
+    if score >= 85:
+        return "Excellent"
+    if score >= 70:
+        return "Good"
+    if score >= 55:
+        return "Fair"
+    return "Poor"
+
+
+def score_color_hex(score: float, preference: str = "light") -> str:
+    """Return an accessible semantic color for a posture score."""
+    dark = is_dark_theme(preference)
+    if score >= 85:
+        return "#46b96b" if dark else "#238442"
+    if score >= 70:
+        return "#78bd67" if dark else "#4f8f3d"
+    if score >= 55:
+        return "#e0ad52" if dark else "#a66b12"
+    return "#ff858b" if dark else "#c43d45"
+
+
 def settings_stylesheet(preference: str) -> str:
     c = theme_colors(preference)
     return f"""
@@ -127,7 +150,9 @@ QLabel#dashboardTitle {{ font-size: 18px; font-weight: 700; }}
 QLabel#dashboardSubtitle {{ color: {c.muted}; font-size: 11px; }}
 QLabel#liveScore {{ font-size: 28px; font-weight: 700; color: {c.accent}; }}
 QLabel#videoFeed {{ background: #101411; border: 1px solid {c.border}; border-radius: 8px; color: {c.muted}; }}
+QLabel#videoOverlay {{ background: rgba(10, 14, 11, 190); border: 1px solid {c.border}; border-radius: 8px; color: #ffffff; padding: 16px; font-size: 15px; font-weight: 700; }}
 QLabel#statCard {{ background: {c.surface}; border: 1px solid {c.border}; border-radius: 8px; padding: 8px; }}
+QLabel#chartLabel {{ color: {c.muted}; font-size: 11px; font-weight: 600; }}
 QLabel#feedback {{ background: {c.accent_soft}; border: 1px solid {c.border}; border-radius: 8px; color: {c.text}; padding: 10px 12px; font-weight: 600; }}
 """
 
@@ -143,6 +168,8 @@ QLabel#heroText {{ color: {c.text}; font-size: 15px; font-weight: 600; }}
 QLabel#supportText {{ color: {c.muted}; }}
 QLabel#cameraPreview {{ background: #101411; color: {c.muted}; border: 1px solid {c.border}; border-radius: 8px; }}
 QLabel#resultPanel {{ background: {c.accent_soft}; border: 1px solid {c.border}; border-radius: 8px; padding: 10px; }}
+QProgressBar {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 6px; min-height: 12px; text-align: center; color: {c.text}; }}
+QProgressBar::chunk {{ background: {c.accent}; border-radius: 5px; }}
 QPushButton {{ background: {c.surface}; color: {c.text}; border: 1px solid {c.border}; border-radius: 6px; padding: 7px 15px; min-height: 32px; font-weight: 600; }}
 QPushButton:hover {{ background: {c.surface_alt}; }}
 QPushButton#primaryButton {{ background: {c.accent}; color: #ffffff; border-color: {c.accent}; }}

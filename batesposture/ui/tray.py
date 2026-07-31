@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 
 from ..data.database import Database, DatabaseInitializationError
 from ..ml.pose_detector import PoseDetectionResult, PoseDetector
+from ..services.camera_capture import discover_camera_ids
 from ..services.camera_service import CameraService
 from ..services.notification_service import NotificationService
 from ..services.score_service import ScoreService
@@ -24,10 +25,11 @@ from ..services.settings_service import (
     SettingsService,
 )
 from ..services.task_scheduler import TaskScheduler
-from .dashboard import PostureDashboard, score_grade
+from .dashboard import PostureDashboard
 from .onboarding import run_onboarding_if_needed
 from .score_icon import create_score_icon
 from .settings_dialog import SettingsDialog
+from .theme import score_grade
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +72,7 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         self.tracking_enabled = False
         self.video_window: PostureDashboard | None = None
-        # Default to 30-minute intervals so the camera isn't running all day.
-        # Users can switch to "Continuous (always on)" from the interval menu.
-        self.tracking_interval = 30
+        self.tracking_interval = settings.runtime.selected_tracking_interval
         self.last_tracking_time: datetime | None = None
         self.last_db_save: datetime | None = None
         self._continuous_tracking_start: datetime | None = None
@@ -80,10 +80,15 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._last_icon_score: float = -1.0
         self._tracking_paused_for_absence = False
         self._absence_started_at: datetime | None = None
+        self._auto_schedule_enabled = True
+        self._onboarding_completed_this_run = False
+        self._onboarding_cancelled = False
+        self._open_dashboard_on_first_tracking = False
 
         self._initialize_application()
         self._run_onboarding_if_needed()
         self._setup_tray_menu()
+        self._show_onboarding_handoff()
         self._scheduler.schedule("frame", 100, self._update_tracking)
         self._scheduler.schedule("interval", 1000, self._check_interval)
         self._setup_signal_handling()
@@ -99,7 +104,29 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.setToolTip("BatesPosture — idle")
 
     def _run_onboarding_if_needed(self) -> None:
-        run_onboarding_if_needed(self._settings)
+        if self._settings.profile.has_completed_onboarding:
+            return
+        accepted = run_onboarding_if_needed(self._settings)
+        self._onboarding_completed_this_run = accepted
+        self._onboarding_cancelled = not accepted
+        self._auto_schedule_enabled = accepted
+        self._open_dashboard_on_first_tracking = accepted
+
+    def _show_onboarding_handoff(self) -> None:
+        if self._onboarding_completed_this_run:
+            self.showMessage(
+                "Setup complete",
+                "BatesPosture is running in your menu bar. Your first posture scan is starting.",
+                QSystemTrayIcon.MessageIcon.Information,
+                5000,
+            )
+        elif self._onboarding_cancelled:
+            self.showMessage(
+                "Setup paused",
+                "BatesPosture will stay idle. Open Settings → Appearance to complete calibration.",
+                QSystemTrayIcon.MessageIcon.Information,
+                5000,
+            )
 
     def _setup_tray_menu(self) -> None:
         menu = QMenu()
@@ -129,6 +156,9 @@ class PostureTrackerTray(QSystemTrayIcon):
             style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
         )
         self.interval_menu_action = menu.addMenu(self.interval_menu)
+        if self._onboarding_cancelled:
+            self.toggle_tracking_action.setEnabled(False)
+            self.interval_menu_action.setEnabled(False)
 
         runtime = self._settings.runtime
         menu.addSection("Quick toggles")
@@ -235,6 +265,8 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _start_tracking(self) -> None:
         started = self._camera_service.start(self._detector.process_frame)
         if not started:
+            if isinstance(self.video_window, PostureDashboard):
+                self.video_window.set_tracking_state("camera_error")
             self.showMessage(
                 "Camera unavailable",
                 "BatesPosture could not access the selected camera. Check camera permissions and Settings.",
@@ -251,9 +283,15 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.toggle_tracking_action.setText("Stop Tracking")
         self.toggle_dashboard_action.setEnabled(True)
         self.setIcon(create_score_icon(0))
+        self.setToolTip("BatesPosture — starting camera…")
+        if isinstance(self.video_window, PostureDashboard):
+            self.video_window.set_tracking_state("starting")
         logger.info("Tracking started")
+        if self._open_dashboard_on_first_tracking:
+            self._open_dashboard_on_first_tracking = False
+            self.toggle_dashboard()
 
-    def _stop_tracking(self) -> None:
+    def _stop_tracking(self, keep_dashboard: bool = False) -> None:
         self._camera_service.stop()
         self.tracking_enabled = False
         self._tracking_paused_for_absence = False
@@ -261,11 +299,15 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._continuous_tracking_start = None
         self._last_icon_score = -1.0
         self.toggle_tracking_action.setText("Start Tracking")
-        self.toggle_dashboard_action.setEnabled(False)
-        self.toggle_dashboard_action.setText("Show Dashboard")
-        if self.video_window:
+        self.toggle_dashboard_action.setEnabled(
+            keep_dashboard and self.video_window is not None
+        )
+        if self.video_window and not keep_dashboard:
             self.video_window.close()
             self.video_window = None
+        self.toggle_dashboard_action.setText(
+            "Hide Dashboard" if self.video_window else "Show Dashboard"
+        )
         self.setIcon(QIcon(self.icon_path))
         self.setToolTip("BatesPosture — idle")
         logger.info("Tracking stopped")
@@ -286,6 +328,7 @@ class PostureTrackerTray(QSystemTrayIcon):
                 preferred_theme=profile.preferred_theme,
                 baseline_neck_angle=profile.baseline_neck_angle,
                 baseline_shoulder_level=profile.baseline_shoulder_level,
+                alert_threshold=self._settings.runtime.poor_posture_threshold,
                 history=history,
             )
             self.video_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
@@ -298,6 +341,19 @@ class PostureTrackerTray(QSystemTrayIcon):
                 self.video_window.resize(width, height)
             else:
                 self.video_window.resize(720, 600)
+            if not self.tracking_enabled and self.last_tracking_time:
+                elapsed = datetime.now() - self.last_tracking_time
+                remaining = timedelta(minutes=self.tracking_interval) - elapsed
+                remaining_s = max(0, remaining.total_seconds())
+                mins = int(remaining_s // 60)
+                secs = int(remaining_s % 60)
+                self.video_window.set_tracking_state(
+                    "scheduled", f"Next scan in {mins}:{secs:02d}"
+                )
+            elif self._tracking_paused_for_absence:
+                self.video_window.set_tracking_state("paused")
+            else:
+                self.video_window.set_tracking_state("starting")
             self.video_window.show()
             self.toggle_dashboard_action.setText("Hide Dashboard")
 
@@ -331,6 +387,8 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._absence_started_at = None
         if self._tracking_paused_for_absence:
             self._resume_tracking_after_presence()
+        if isinstance(self.video_window, PostureDashboard):
+            self.video_window.set_tracking_state("tracking")
 
         self._scores.add_score(score)
         average_score, stats = self._scores.average_and_stats()
@@ -370,6 +428,8 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         if isinstance(self.video_window, PostureDashboard):
             self.video_window.update_frame(frame)
+            state = "paused" if self._tracking_paused_for_absence else "finding"
+            self.video_window.set_tracking_state(state)
 
     def _pause_tracking_for_absence(self) -> None:
         if self._tracking_paused_for_absence:
@@ -413,6 +473,8 @@ class PostureTrackerTray(QSystemTrayIcon):
     # ------------------------
     def set_interval(self, minutes: int) -> None:
         self.tracking_interval = minutes
+        self._auto_schedule_enabled = True
+        self._settings.update_runtime(selected_tracking_interval=minutes)
         if minutes == 0:
             self._notifications.notify_interval_change(
                 "Continuous tracking enabled — camera stays on."
@@ -429,7 +491,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.toggle_tracking()
 
     def _check_interval(self) -> None:
-        if self.tracking_interval <= 0:
+        if not self._auto_schedule_enabled or self.tracking_interval <= 0:
             return
         current_time = datetime.now()
         if not self.last_tracking_time:
@@ -444,7 +506,10 @@ class PostureTrackerTray(QSystemTrayIcon):
         elif not self.tracking_enabled:
             mins = int(remaining_s // 60)
             secs = int(remaining_s % 60)
-            self.setToolTip(f"Next scan in {mins}:{secs:02d}")
+            message = f"Next scan in {mins}:{secs:02d}"
+            self.setToolTip(message)
+            if isinstance(self.video_window, PostureDashboard):
+                self.video_window.set_tracking_state("scheduled", message)
 
     def _start_interval_tracking(self) -> None:
         self.last_tracking_time = datetime.now()
@@ -458,7 +523,7 @@ class PostureTrackerTray(QSystemTrayIcon):
 
     def _stop_interval_tracking(self) -> None:
         if self.tracking_enabled and self.tracking_interval > 0:
-            self.toggle_tracking()
+            self._stop_tracking(keep_dashboard=True)
 
     # ------------------------
     # Persistence
@@ -533,12 +598,47 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.focus_mode_action.setText(label)
 
     def open_settings(self) -> None:
-        dialog = SettingsDialog(self._settings)
+        active_camera_id = (
+            self._settings.runtime.default_camera_id if self.tracking_enabled else None
+        )
+        cameras = discover_camera_ids(active_camera_id=active_camera_id)
+        dialog = SettingsDialog(self._settings, available_camera_ids=cameras)
         if dialog.exec() == QDialog.DialogCode.Accepted:  # type: ignore
             self._refresh_after_settings_change()
+            if dialog.recalibration_requested:
+                self._run_recalibration()
+
+    def _run_recalibration(self) -> None:
+        was_tracking = self.tracking_enabled
+        dashboard_was_open = self.video_window is not None
+        if was_tracking:
+            self._stop_tracking()
+        accepted = run_onboarding_if_needed(self._settings, force=True)
+        if accepted:
+            self._onboarding_cancelled = False
+            self._auto_schedule_enabled = True
+            self._open_dashboard_on_first_tracking = True
+            self.toggle_tracking_action.setEnabled(True)
+            self.interval_menu_action.setEnabled(True)
+            self.showMessage(
+                "Calibration updated",
+                "Your new baseline is ready. Tracking is starting now.",
+                QSystemTrayIcon.MessageIcon.Information,
+                4000,
+            )
+            self._start_tracking()
+        elif was_tracking:
+            self._start_tracking()
+            if dashboard_was_open:
+                self.toggle_dashboard()
+        elif not self._settings.profile.has_completed_onboarding:
+            self._auto_schedule_enabled = False
+            self.toggle_tracking_action.setEnabled(False)
+            self.interval_menu_action.setEnabled(False)
 
     def _refresh_after_settings_change(self) -> None:
         runtime = self._settings.runtime
+        self.tracking_interval = runtime.selected_tracking_interval
         self._set_notification_label(runtime.notifications_enabled)
         self.notifications_toggle_action.setChecked(runtime.notifications_enabled)
         self._set_logging_label(runtime.enable_database_logging)
@@ -554,6 +654,8 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.interval_menu_action = menu.insertMenu(
                 self.toggle_tracking_action, self.interval_menu
             )
+            if self._onboarding_cancelled:
+                self.interval_menu_action.setEnabled(False)
 
         with self._camera_service.pause_processing():
             self._camera_service.reload_settings()

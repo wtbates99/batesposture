@@ -61,7 +61,10 @@ class SettingsDialog(QDialog):
     }
 
     def __init__(
-        self, settings_service: SettingsService, parent: QWidget | None = None
+        self,
+        settings_service: SettingsService,
+        parent: QWidget | None = None,
+        available_camera_ids: list[int] | None = None,
     ) -> None:
         super().__init__(parent)
         self._settings = settings_service
@@ -69,6 +72,13 @@ class SettingsDialog(QDialog):
         self.ml_settings = settings_service.ml
         self.profile_settings = settings_service.profile
         self.validation_errors: dict[str, str] = {}
+        self.recalibration_requested = False
+        self._camera_list_verified = available_camera_ids is not None
+        self._available_camera_ids = (
+            available_camera_ids
+            if available_camera_ids is not None
+            else [self.runtime_settings.default_camera_id]
+        )
 
         self.setWindowTitle("BatesPosture Settings")
         self.setMinimumSize(900, 560)
@@ -300,6 +310,15 @@ class SettingsDialog(QDialog):
         profile_status.setObjectName("helpText")
         form.addRow("Profile:", profile_status)
 
+        recalibrate_label = (
+            "Recalibrate…"
+            if self.profile_settings.has_completed_onboarding
+            else "Complete calibration…"
+        )
+        self.recalibrate_button = QPushButton(recalibrate_label)
+        self.recalibrate_button.clicked.connect(self._request_recalibration)
+        form.addRow("", self.recalibrate_button)
+
         layout.addWidget(card)
         layout.addStretch()
         return container
@@ -368,7 +387,12 @@ class SettingsDialog(QDialog):
         layout.addWidget(card)
         layout.addWidget(
             self._help_label(
-                "Higher resolution improves detection accuracy but increases CPU usage."
+                (
+                    "Only cameras available right now are shown. "
+                    if self._camera_list_verified
+                    else "The configured camera will be checked when tracking starts. "
+                )
+                + "Higher resolution improves detection accuracy but increases CPU usage."
             )
         )
         layout.addStretch()
@@ -680,11 +704,23 @@ class SettingsDialog(QDialog):
     # ── camera detection ──────────────────────────────────────────────────────
 
     def _available_cameras(self, max_index: int = 5):
-        camera_ids = list(range(max_index))
+        del max_index
         current = self.runtime_settings.default_camera_id
-        if current not in camera_ids:
-            camera_ids.append(current)
-        return [(camera_id, f"Camera {camera_id}") for camera_id in camera_ids]
+        return [
+            (
+                camera_id,
+                (
+                    f"Camera {camera_id} · current"
+                    if camera_id == current
+                    else f"Camera {camera_id}"
+                ),
+            )
+            for camera_id in self._available_camera_ids
+        ]
+
+    def _request_recalibration(self) -> None:
+        self.recalibration_requested = True
+        self.accept()
 
     # ── validation ────────────────────────────────────────────────────────────
 
@@ -797,6 +833,14 @@ class SettingsDialog(QDialog):
             enable_database_logging=self.db_logging_checkbox.isChecked(),
             db_write_interval_seconds=self.db_write_interval_spinbox.value(),
             tracking_intervals=intervals,
+            selected_tracking_interval=(
+                self.runtime_settings.selected_tracking_interval
+                if self.runtime_settings.selected_tracking_interval
+                in intervals.values()
+                else (
+                    30 if 30 in intervals.values() else next(iter(intervals.values()))
+                )
+            ),
             tracking_duration_minutes=self.tracking_duration_spinbox.value(),
         )
         self._settings.update_ml(
