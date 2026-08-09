@@ -8,11 +8,13 @@ version = "1.1.2"
 description = "Discreet system-tray posture monitor powered by MediaPipe and OpenCV."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "AGPL-3.0-only" }
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE"]
+authors = [{ name = "William Bates", email = "wbates@palanbates.com" }]
 keywords = ["posture", "mediapipe", "opencv", "system-tray", "webcam"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
     "Operating System :: MacOS",
     "Operating System :: Microsoft :: Windows",
@@ -35,6 +37,7 @@ batesposture = "batesposture.main:main"
 [project.urls]
 Repository = "https://github.com/wtbates99/batesposture"
 "Bug Tracker" = "https://github.com/wtbates99/batesposture/issues"
+"Commercial License" = "https://github.com/wtbates99/batesposture/blob/main/COMMERCIAL-LICENSE.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["batesposture"]
