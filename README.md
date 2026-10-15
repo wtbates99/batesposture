@@ -59,7 +59,7 @@ sudo apt-get install -y \
   libgl1 libglib2.0-0 \
   libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
   libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
-  libxcb-xfixes0 libxkbcommon-x11-0 libegl1
+  libxcb-xfixes0 libxkbcommon-x11-0 libegl1 libgles2
 ```
 
 GNOME users may also need an AppIndicator extension for the tray icon.
@@ -92,6 +92,8 @@ profile settings.
 - Video frames are processed locally and are not uploaded.
 - Posture data does not leave the machine.
 - There are no accounts, analytics, or telemetry.
+- The MediaPipe pose model is downloaded once from Google's model storage on first
+  use and cached locally; no data is sent.
 - SQLite logging is opt-in and disabled by default.
 - README screenshots use synthetic imagery and contain no biometric data.
 
@@ -99,7 +101,7 @@ Data locations vary by platform:
 
 | Data | Location |
 | --- | --- |
-| Database and lock | Linux `~/.local/share/BatesPosture/`; macOS application support; Windows `%APPDATA%` |
+| Database, lock, and pose models | Linux `~/.local/share/BatesPosture/`; macOS application support; Windows `%APPDATA%` |
 | Logs | macOS `~/Library/Logs/BatesPosture/app.log`; other platforms `~/.batesposture_logs/app.log` |
 | CSV exports | `~/posture_export_YYYYMMDD_HHMMSS.csv` |
 

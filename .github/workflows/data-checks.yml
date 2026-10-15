@@ -36,7 +36,7 @@ jobs:
         with:
           enable-cache: true
 
-      # cv2 needs libGL; PyQt6 needs xcb/EGL even in offscreen mode.
+      # cv2 needs libGL; PyQt6 needs xcb/EGL even in offscreen mode; MediaPipe needs GLES.
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
@@ -45,7 +45,7 @@ jobs:
             libgl1 libglib2.0-0 \
             libxcb-xinerama0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
             libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
-            libxcb-xfixes0 libxkbcommon-x11-0 libegl1
+            libxcb-xfixes0 libxkbcommon-x11-0 libegl1 libgles2
 
       - name: Install dependencies
         run: uv sync --locked --all-groups
