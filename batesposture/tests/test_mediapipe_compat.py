@@ -1,25 +1,20 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from ..ml import mediapipe_compat
 
 
-def test_load_mediapipe_solutions_prefers_public_namespace(monkeypatch):
-    sentinel = object()
-    fake_mp = SimpleNamespace(solutions=sentinel)
+def test_pose_landmark_indices_match_blazepose_topology():
+    landmark = mediapipe_compat.PoseLandmark
 
-    assert mediapipe_compat.load_mediapipe_solutions(fake_mp) is sentinel
+    assert landmark.NOSE == 0
+    assert landmark.LEFT_EAR == 7
+    assert landmark.LEFT_SHOULDER == 11
+    assert landmark.RIGHT_HIP == 24
+    assert len(landmark) == 33
 
 
-def test_load_mediapipe_solutions_falls_back_to_python_namespace(monkeypatch):
-    sentinel = object()
-    fake_mp = SimpleNamespace()
-
-    def fake_import(name: str):
-        assert name == "mediapipe.python.solutions"
-        return sentinel
-
-    monkeypatch.setattr(mediapipe_compat, "import_module", fake_import)
-
-    assert mediapipe_compat.load_mediapipe_solutions(fake_mp) is sentinel
+def test_pose_connections_reference_valid_landmarks():
+    assert mediapipe_compat.POSE_CONNECTIONS
+    for connection in mediapipe_compat.POSE_CONNECTIONS:
+        assert 0 <= connection.start < 33
+        assert 0 <= connection.end < 33
