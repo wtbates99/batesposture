@@ -9,7 +9,7 @@ def test_settings_imports_mediapipe_compat_before_pyqt6():
     source = inspect.getsource(settings_service)
 
     assert source.index(
-        "from ..ml.mediapipe_compat import MP_SOLUTIONS"
+        "from ..ml.mediapipe_compat import PoseLandmark"
     ) < source.index("from PyQt6.QtCore import QSettings")
 
 

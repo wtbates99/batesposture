@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "mediapipe==0.10.21",
+    "mediapipe>=1.1.1",
     "numpy>=1.26.4",
     "opencv-python>=4.11.0.86",
     "plyer>=2.1.0",

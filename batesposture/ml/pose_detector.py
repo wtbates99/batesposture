@@ -1,22 +1,63 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
+import urllib.request
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import cv2
+import mediapipe as mp
 import numpy as np
+from mediapipe.tasks.python import BaseOptions, vision
 
 from ..services.settings_service import (
     DEFAULT_POSTURE_WEIGHTS,
     SettingsService,
     _default_posture_thresholds,
+    get_app_data_dir,
 )
-from .mediapipe_compat import MP_SOLUTIONS
+from .mediapipe_compat import POSE_CONNECTIONS, PoseLandmark
 
 logger = logging.getLogger(__name__)
+
+# model_complexity setting → Pose Landmarker model variant
+_MODEL_VARIANTS = {0: "lite", 1: "full", 2: "heavy"}
+_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+    "pose_landmarker_{0}/float16/1/pose_landmarker_{0}.task"
+)
+_MODEL_SHA256 = {
+    "lite": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a",
+    "full": "5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1",
+    "heavy": "64437af838a65d18e5ba7a0d39b465540069bc8aae8308de3e318aad31fcbc7b",
+}
+
+
+def _model_path(model_complexity: int) -> str:
+    """Return a local path to the pose model, downloading it on first use."""
+    variant = _MODEL_VARIANTS.get(model_complexity, "full")
+    path = get_app_data_dir() / "models" / f"pose_landmarker_{variant}.task"
+    if path.exists():
+        return str(path)
+
+    logger.info("Downloading %s pose model", variant)
+    try:
+        with urllib.request.urlopen(_MODEL_URL.format(variant), timeout=60) as resp:
+            data = resp.read()
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not download the {variant} pose model. An internet connection "
+            "is needed the first time each model is used."
+        ) from exc
+    if hashlib.sha256(data).hexdigest() != _MODEL_SHA256[variant]:
+        raise RuntimeError(f"Checksum mismatch for downloaded {path.name}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return str(path)
 
 
 @dataclass
@@ -43,8 +84,7 @@ class PoseDetector:
 
     def __init__(self, settings: SettingsService) -> None:
         self._settings = settings
-        self.mp_pose = MP_SOLUTIONS.pose
-        self.mp_draw = MP_SOLUTIONS.drawing_utils
+        self.mp_draw = vision.drawing_utils
         self.posture_landmarks = settings.get_posture_landmarks()
         self.ideal_neck_vector = np.array([0, -1, 0])
         self.ideal_spine_vector = np.array([0, -1, 0])
@@ -53,6 +93,7 @@ class PoseDetector:
         self.weights = np.array([], dtype=float)
         self.score_thresholds: dict[str, float] = {}
         self.pose = None
+        self._last_timestamp_ms = 0
         # Cached CLAHE object — creating one per frame is expensive at 30 FPS
         self._clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         self.reload()
@@ -64,7 +105,7 @@ class PoseDetector:
             rng = np.random.default_rng(0)
             _dummy = rng.integers(50, 200, (480, 640, 3), dtype=np.uint8)
             _t0 = time.monotonic()
-            self.pose.process(cv2.cvtColor(_dummy, cv2.COLOR_BGR2RGB))
+            self._detect_pose(_dummy)
             self.prewarm_duration_ms = (time.monotonic() - _t0) * 1000
             logger.debug(
                 "MediaPipe model pre-warmed in %.0f ms", self.prewarm_duration_ms
@@ -74,11 +115,15 @@ class PoseDetector:
 
     def _create_pose(self):
         ml_settings = self._settings.ml
-        return self.mp_pose.Pose(
-            min_detection_confidence=ml_settings.min_detection_confidence,
+        options = vision.PoseLandmarkerOptions(
+            base_options=BaseOptions(
+                model_asset_path=_model_path(ml_settings.model_complexity)
+            ),
+            running_mode=vision.RunningMode.VIDEO,
+            min_pose_detection_confidence=ml_settings.min_detection_confidence,
             min_tracking_confidence=ml_settings.min_tracking_confidence,
-            model_complexity=ml_settings.model_complexity,
         )
+        return vision.PoseLandmarker.create_from_options(options)
 
     def reload(self) -> None:
         """Reload detector and scoring settings without restarting the app."""
@@ -91,7 +136,15 @@ class PoseDetector:
         )
 
         old_pose = getattr(self, "pose", None)
-        self.pose = self._create_pose()
+        try:
+            new_pose = self._create_pose()
+        except RuntimeError:
+            if old_pose is None:
+                raise
+            # e.g. a newly selected model could not be downloaded while offline
+            logger.exception("Keeping the current pose model")
+            return
+        self.pose = new_pose
         if old_pose is not None and hasattr(old_pose, "close"):
             old_pose.close()
 
@@ -128,15 +181,27 @@ class PoseDetector:
 
     def _detect_pose(self, frame: np.ndarray) -> Any:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return self.pose.process(rgb_frame)
+        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        # VIDEO mode requires strictly increasing timestamps
+        timestamp_ms = max(int(time.monotonic() * 1000), self._last_timestamp_ms + 1)
+        self._last_timestamp_ms = timestamp_ms
+        result = self.pose.detect_for_video(image, timestamp_ms)
+        # Expose the first pose in the legacy ``pose_landmarks.landmark`` shape
+        # that scoring, drawing, and the database layer consume.
+        pose_landmarks = (
+            SimpleNamespace(landmark=result.pose_landmarks[0])
+            if result.pose_landmarks
+            else None
+        )
+        return SimpleNamespace(pose_landmarks=pose_landmarks)
 
     def _draw_landmarks(
         self, frame: np.ndarray, results: Any, points: np.ndarray
     ) -> None:
         self.mp_draw.draw_landmarks(
             frame,
-            results.pose_landmarks,
-            self.mp_pose.POSE_CONNECTIONS,
+            results.pose_landmarks.landmark,
+            POSE_CONNECTIONS,
             landmark_drawing_spec=self.mp_draw.DrawingSpec(
                 color=(0, 255, 0), thickness=2, circle_radius=2
             ),
@@ -146,10 +211,10 @@ class PoseDetector:
         )
         if results.pose_landmarks:
             h, w, _ = frame.shape
-            lh = self.mp_pose.PoseLandmark.LEFT_HIP
-            rh = self.mp_pose.PoseLandmark.RIGHT_HIP
-            ls = self.mp_pose.PoseLandmark.LEFT_SHOULDER
-            rs = self.mp_pose.PoseLandmark.RIGHT_SHOULDER
+            lh = PoseLandmark.LEFT_HIP
+            rh = PoseLandmark.RIGHT_HIP
+            ls = PoseLandmark.LEFT_SHOULDER
+            rs = PoseLandmark.RIGHT_SHOULDER
             # Reuse pre-extracted points array instead of re-reading landmarks
             mid_hip_x = (points[lh, 0] + points[rh, 0]) * 0.5
             mid_hip_y = (points[lh, 1] + points[rh, 1]) * 0.5
@@ -184,19 +249,15 @@ class PoseDetector:
     def _compute_posture_metrics_from_points(
         self, points: np.ndarray
     ) -> dict[str, float]:
-        nose = points[self.mp_pose.PoseLandmark.NOSE]
-        ears = points[
-            [self.mp_pose.PoseLandmark.LEFT_EAR, self.mp_pose.PoseLandmark.RIGHT_EAR]
-        ]
+        nose = points[PoseLandmark.NOSE]
+        ears = points[[PoseLandmark.LEFT_EAR, PoseLandmark.RIGHT_EAR]]
         shoulders = points[
             [
-                self.mp_pose.PoseLandmark.LEFT_SHOULDER,
-                self.mp_pose.PoseLandmark.RIGHT_SHOULDER,
+                PoseLandmark.LEFT_SHOULDER,
+                PoseLandmark.RIGHT_SHOULDER,
             ]
         ]
-        hips = points[
-            [self.mp_pose.PoseLandmark.LEFT_HIP, self.mp_pose.PoseLandmark.RIGHT_HIP]
-        ]
+        hips = points[[PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP]]
 
         mid_ear = np.mean(ears, axis=0)
         mid_shoulder = np.mean(shoulders, axis=0)

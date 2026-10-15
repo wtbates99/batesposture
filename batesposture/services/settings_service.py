@@ -17,7 +17,7 @@ from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 
 # Import MediaPipe before PyQt6 on Windows to avoid DLL initialization failures
 # when settings are imported outside the main application entry point.
-from ..ml.mediapipe_compat import MP_SOLUTIONS
+from ..ml.mediapipe_compat import PoseLandmark
 
 from PyQt6.QtCore import QSettings, QStandardPaths
 
@@ -184,25 +184,25 @@ class UserProfileSettings:
 
 
 POSTURE_LANDMARKS = [
-    MP_SOLUTIONS.pose.PoseLandmark.NOSE,
-    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EYE_INNER,
-    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EYE,
-    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EYE_OUTER,
-    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EYE_INNER,
-    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EYE,
-    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EYE_OUTER,
-    MP_SOLUTIONS.pose.PoseLandmark.LEFT_EAR,
-    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_EAR,
-    MP_SOLUTIONS.pose.PoseLandmark.MOUTH_LEFT,
-    MP_SOLUTIONS.pose.PoseLandmark.MOUTH_RIGHT,
-    MP_SOLUTIONS.pose.PoseLandmark.LEFT_SHOULDER,
-    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_SHOULDER,
-    MP_SOLUTIONS.pose.PoseLandmark.LEFT_ELBOW,
-    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_ELBOW,
-    MP_SOLUTIONS.pose.PoseLandmark.LEFT_WRIST,
-    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_WRIST,
-    MP_SOLUTIONS.pose.PoseLandmark.LEFT_HIP,
-    MP_SOLUTIONS.pose.PoseLandmark.RIGHT_HIP,
+    PoseLandmark.NOSE,
+    PoseLandmark.LEFT_EYE_INNER,
+    PoseLandmark.LEFT_EYE,
+    PoseLandmark.LEFT_EYE_OUTER,
+    PoseLandmark.RIGHT_EYE_INNER,
+    PoseLandmark.RIGHT_EYE,
+    PoseLandmark.RIGHT_EYE_OUTER,
+    PoseLandmark.LEFT_EAR,
+    PoseLandmark.RIGHT_EAR,
+    PoseLandmark.MOUTH_LEFT,
+    PoseLandmark.MOUTH_RIGHT,
+    PoseLandmark.LEFT_SHOULDER,
+    PoseLandmark.RIGHT_SHOULDER,
+    PoseLandmark.LEFT_ELBOW,
+    PoseLandmark.RIGHT_ELBOW,
+    PoseLandmark.LEFT_WRIST,
+    PoseLandmark.RIGHT_WRIST,
+    PoseLandmark.LEFT_HIP,
+    PoseLandmark.RIGHT_HIP,
 ]
 
 
