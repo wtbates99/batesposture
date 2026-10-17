@@ -219,6 +219,18 @@ class ScoreService:
 
         return float(_mean(baseline_mask) - _mean(recent_mask))
 
+    def trend_points(self, seconds: int = 600, max_points: int = 60) -> list[float]:
+        """Return recent per-second means, binned to at most ``max_points``."""
+        with self._lock:
+            if not self._trend:
+                return []
+            buckets = np.array(self._trend, dtype=np.float64)
+        buckets = buckets[buckets[:, 0] > monotonic() - seconds]
+        if not len(buckets):
+            return []
+        bins = np.array_split(buckets, min(max_points, len(buckets)))
+        return [float(b[:, 1].sum() / b[:, 2].sum()) for b in bins]
+
     def average_and_stats(self) -> tuple:
         """Return (rolling_average, session_stats_dict) in a single lock acquisition."""
         with self._lock:

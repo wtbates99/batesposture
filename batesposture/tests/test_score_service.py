@@ -222,3 +222,17 @@ def test_session_stats_cover_whole_session_after_wraparound(service):
     assert stats["count"] == 2001
     assert stats["min"] == 10.0
     assert stats["avg"] == pytest.approx((10.0 + 80.0 * 2000) / 2001, abs=0.05)
+
+
+def test_trend_points_bins_recent_seconds(service):
+    for second in range(120):
+        with patch(
+            "batesposture.services.score_service.monotonic",
+            return_value=1000.0 + second,
+        ):
+            service.add_score(50.0 if second < 60 else 90.0)
+    with patch("batesposture.services.score_service.monotonic", return_value=1119.5):
+        points = service.trend_points(seconds=600, max_points=4)
+        recent = service.trend_points(seconds=30, max_points=60)
+    assert points == pytest.approx([50.0, 50.0, 90.0, 90.0])
+    assert len(recent) == 30 and set(recent) == {90.0}

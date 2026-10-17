@@ -134,6 +134,8 @@ class SparklineWidget(QWidget):
         self.muted_color = QColor("#657069")
         self.threshold = 60.0
         self.baseline = 75.0
+        self.value_min = 0.0
+        self.value_max = 100.0
         self._theme_preference = "light"
         self.setMinimumHeight(86)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -156,6 +158,10 @@ class SparklineWidget(QWidget):
         self.baseline = baseline
         self.update()
 
+    def set_value_range(self, low: float, high: float) -> None:
+        self.value_min, self.value_max = low, max(high, low + 1.0)
+        self.update()
+
     def update_values(self, values: list[float]) -> None:
         self.values = values
         self.update()
@@ -166,9 +172,11 @@ class SparklineWidget(QWidget):
         rect = self.rect().adjusted(4, 4, -4, -4)
         painter.fillRect(rect, self.background_color)
 
+        span = self.value_max - self.value_min
+
         def _y(value: float) -> float:
-            norm = max(0.0, min(100.0, value)) / 100.0
-            return rect.bottom() - norm * rect.height()
+            value = max(self.value_min, min(self.value_max, value))
+            return rect.bottom() - (value - self.value_min) / span * rect.height()
 
         painter.setPen(QPen(self.muted_color, 1.0, Qt.PenStyle.DotLine))
         painter.drawLine(

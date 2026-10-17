@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 from datetime import datetime, timedelta
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QActionGroup, QIcon
+from PyQt6.QtGui import QAction, QActionGroup, QCursor, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
     QMenu,
     QMessageBox,
-    QStyle,
     QSystemTrayIcon,
 )
 
@@ -28,6 +28,7 @@ from ..services.settings_service import (
 from ..services.task_scheduler import TaskScheduler
 from .dashboard import PostureDashboard
 from .onboarding import run_onboarding_if_needed
+from .popover import TrayPopover
 from .score_icon import create_score_icon
 from .settings_dialog import SettingsDialog
 from .theme import score_grade
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 # How long (minutes) of continuous tracking before suggesting a break
 _BREAK_REMINDER_MINUTES = BREAK_REMINDER_MINUTES
 _ABSENCE_PAUSE_DELAY = timedelta(seconds=2)
+_SNOOZE_SECONDS = 60 * 60
 
 
 class PostureTrackerTray(QSystemTrayIcon):
@@ -85,6 +87,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._continuous_tracking_start: datetime | None = None
         self._break_reminder_sent = False
         self._last_icon_score: float = -1.0
+        self._last_icon_alert = False
         self._last_frame_seq = 0
         self._last_tooltip = ""
         self._tracking_paused_for_absence = False
@@ -98,6 +101,9 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._run_onboarding_if_needed()
         self._setup_tray_menu()
         self._show_onboarding_handoff()
+        self.popover = TrayPopover(self._settings.profile.preferred_theme)
+        self._connect_popover()
+        self.activated.connect(self._on_activated)
         self.frame_processed.connect(self._update_tracking)
         self.camera_failed.connect(self._on_camera_failed)
         self._sync_processing_rate()
@@ -141,17 +147,14 @@ class PostureTrackerTray(QSystemTrayIcon):
 
     def _setup_tray_menu(self) -> None:
         menu = QMenu()
-        style = QApplication.style()
 
         self.toggle_tracking_action = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay),
             "Start Tracking",
             self,
         )
         self.toggle_tracking_action.triggered.connect(self.toggle_tracking)
 
         self.toggle_dashboard_action = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_DesktopIcon),
             "Show Dashboard",
             self,
         )
@@ -163,9 +166,6 @@ class PostureTrackerTray(QSystemTrayIcon):
         menu.addAction(self.toggle_dashboard_action)
 
         self.interval_menu = self._create_interval_menu(menu)
-        self.interval_menu.setIcon(
-            style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
-        )
         self.interval_menu_action = menu.addMenu(self.interval_menu)
         if self._onboarding_cancelled:
             self.toggle_tracking_action.setEnabled(False)
@@ -174,44 +174,41 @@ class PostureTrackerTray(QSystemTrayIcon):
         runtime = self._settings.runtime
         menu.addSection("Quick toggles")
         self.notifications_toggle_action = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation),
             "Notifications",
             self,
             checkable=True,
         )
         self.notifications_toggle_action.setChecked(runtime.notifications_enabled)
         self.notifications_toggle_action.triggered.connect(self._toggle_notifications)
-        self._set_notification_label(runtime.notifications_enabled)
 
         self.logging_toggle_action = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_DriveHDIcon),
             "Database Logging",
             self,
             checkable=True,
         )
         self.logging_toggle_action.setChecked(runtime.enable_database_logging)
         self.logging_toggle_action.triggered.connect(self._toggle_logging)
-        self._set_logging_label(runtime.enable_database_logging)
 
         self.focus_mode_action = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_DialogNoButton),
             "Focus Mode",
             self,
             checkable=True,
         )
         self.focus_mode_action.setChecked(runtime.focus_mode_enabled)
         self.focus_mode_action.triggered.connect(self._toggle_focus_mode)
-        self._set_focus_label(runtime.focus_mode_enabled)
+
+        self.snooze_action = QAction("Snooze Alerts for 1 Hour", self, checkable=True)
+        self.snooze_action.triggered.connect(self._toggle_snooze)
 
         menu.addAction(self.notifications_toggle_action)
+        menu.addAction(self.snooze_action)
         menu.addAction(self.logging_toggle_action)
         menu.addAction(self.focus_mode_action)
 
         menu.addSeparator()
 
         self.settings_action = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
-            "Settings",
+            "Settings…",
             menu,
         )
         self.settings_action.triggered.connect(self.open_settings)
@@ -219,7 +216,6 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         # Export action (enabled when DB logging is on)
         self.export_action = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton),
             "Export Data as CSV…",
             menu,
         )
@@ -229,15 +225,109 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         menu.addSeparator()
         quit_action = QAction(
-            style.standardIcon(QStyle.StandardPixmap.SP_TitleBarCloseButton),
             "Quit",
             menu,
             triggered=self.quit_application,
         )
         menu.addAction(quit_action)
 
-        self.setContextMenu(menu)
+        self._menu = menu
+        # On macOS a context menu would hijack the left click that opens the
+        # popover; elsewhere right-click menus are the platform convention.
+        if sys.platform != "darwin":
+            self.setContextMenu(menu)
         self.setVisible(True)
+
+    # ------------------------
+    # Popover
+    # ------------------------
+    def _connect_popover(self) -> None:
+        pop = self.popover
+
+        def _then_hide(action):
+            def _run() -> None:
+                pop.hide()
+                action()
+
+            return _run
+
+        pop.tracking_button.clicked.connect(_then_hide(self.toggle_tracking))
+        pop.dashboard_button.clicked.connect(_then_hide(self._show_dashboard))
+        pop.snooze_button.clicked.connect(self._toggle_snooze)
+        pop.settings_button.clicked.connect(_then_hide(self.open_settings))
+        pop.quit_button.clicked.connect(_then_hide(self.quit_application))
+        pop.more_button.clicked.connect(
+            lambda: (pop.hide(), self._menu.popup(QCursor.pos()))
+        )
+
+    def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        if reason == QSystemTrayIcon.ActivationReason.Context:
+            if sys.platform == "darwin":
+                self._menu.popup(QCursor.pos())
+            return
+        if reason != QSystemTrayIcon.ActivationReason.Trigger:
+            return
+        if self.popover.isVisible():
+            self.popover.hide()
+            return
+        self._refresh_popover()
+        self.popover.show_near(self.geometry())
+
+    def _show_dashboard(self) -> None:
+        if self.video_window is None:
+            self.toggle_dashboard()
+        else:
+            self.video_window.showNormal()
+            self.video_window.raise_()
+            self.video_window.activateWindow()
+
+    def _popover_status(self, streak_s: float) -> tuple[str, str]:
+        if self.tracking_enabled and self._tracking_paused_for_absence:
+            return "Paused", "Away from desk — resumes when you're back."
+        if self.tracking_enabled:
+            if self._last_icon_score < 0:
+                return "Starting…", "Finding you in frame."
+            grade = score_grade(self._last_icon_score)
+            detail = "Tracking now"
+            if streak_s >= 60:
+                detail += f" · {int(streak_s) // 60}m good streak"
+            return f"{grade} posture", detail
+        if self._onboarding_cancelled:
+            return "Setup needed", "Open Settings to finish calibration."
+        if self.tracking_interval > 0 and self.last_tracking_time:
+            elapsed = datetime.now() - self.last_tracking_time
+            remaining = timedelta(minutes=self.tracking_interval) - elapsed
+            mins, secs = divmod(max(0, int(remaining.total_seconds())), 60)
+            return "Between scans", f"Next scan in {mins}:{secs:02d}"
+        return "Not tracking", "Start tracking to see your score."
+
+    def _refresh_popover(self) -> None:
+        streak_s = self._scores.current_streak_s if self.tracking_enabled else 0.0
+        headline, status = self._popover_status(streak_s)
+        snooze_left = self._notifications.snooze_remaining_s
+        if snooze_left > 0:
+            snooze_label = f"Alerts snoozed · {int(snooze_left // 60) + 1} min left"
+        else:
+            snooze_label = "Snooze alerts for 1 hour"
+        score = self._last_icon_score if self._last_icon_score >= 0 else None
+        self.popover.set_state(
+            score=score if self.tracking_enabled else None,
+            headline=headline,
+            status=status,
+            trend=self._scores.trend_points(),
+            tracking=self.tracking_enabled,
+            dashboard_available=self.toggle_dashboard_action.isEnabled(),
+            snooze_label=snooze_label,
+            alert_threshold=self._settings.runtime.poor_posture_threshold,
+            baseline=self._settings.profile.baseline_posture_score,
+        )
+
+    def _toggle_snooze(self) -> None:
+        snoozed = self._notifications.snooze_remaining_s > 0
+        self._notifications.snooze(0 if snoozed else _SNOOZE_SECONDS)
+        self.snooze_action.setChecked(not snoozed)
+        if self.popover.isVisible():
+            self._refresh_popover()
 
     def _create_interval_menu(self, parent_menu: QMenu) -> QMenu:
         interval_menu = QMenu("Tracking Interval", parent_menu)
@@ -290,7 +380,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._break_reminder_sent = False
         self.toggle_tracking_action.setText("Stop Tracking")
         self.toggle_dashboard_action.setEnabled(True)
-        self.setIcon(create_score_icon(0))
+        self.setIcon(QIcon(self.icon_path))  # until the first score arrives
         self._set_tooltip("BatesPosture — starting camera…")
         if isinstance(self.video_window, PostureDashboard):
             self.video_window.set_tracking_state("starting")
@@ -425,9 +515,16 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         self._scores.add_score(score)
         average_score, stats = self._scores.average_and_stats()
-        if abs(average_score - self._last_icon_score) >= 1.0:
-            self.setIcon(create_score_icon(average_score))
+        alert = average_score < self._settings.runtime.poor_posture_threshold
+        if (
+            abs(average_score - self._last_icon_score) >= 1.0
+            or alert != self._last_icon_alert
+        ):
+            self.setIcon(create_score_icon(average_score, alert=alert))
             self._last_icon_score = average_score
+            self._last_icon_alert = alert
+        if self.popover.isVisible():
+            self._refresh_popover()
 
         metrics: dict[str, float] | None = results_bundle.metrics
 
@@ -499,6 +596,8 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _maybe_send_break_reminder(self) -> None:
         if self._break_reminder_sent or self._continuous_tracking_start is None:
             return
+        if self._notifications.snooze_remaining_s > 0:
+            return
         elapsed = datetime.now() - self._continuous_tracking_start
         if elapsed >= timedelta(minutes=_BREAK_REMINDER_MINUTES):
             self._notifications.notify_interval_change(
@@ -529,6 +628,8 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.toggle_tracking()
 
     def _check_interval(self) -> None:
+        if self.popover.isVisible():
+            self._refresh_popover()  # keeps the countdown and snooze label live
         if not self._auto_schedule_enabled or self.tracking_interval <= 0:
             return
         current_time = datetime.now()
@@ -612,28 +713,13 @@ class PostureTrackerTray(QSystemTrayIcon):
     # ------------------------
     def _toggle_notifications(self, checked: bool) -> None:
         self._settings.update_runtime(notifications_enabled=checked)
-        self._set_notification_label(checked)
 
     def _toggle_logging(self, checked: bool) -> None:
         self._settings.update_runtime(enable_database_logging=checked)
-        self._set_logging_label(checked)
         self._sync_database_logging_state()
 
     def _toggle_focus_mode(self, checked: bool) -> None:
         self._settings.update_runtime(focus_mode_enabled=checked)
-        self._set_focus_label(checked)
-
-    def _set_notification_label(self, enabled: bool) -> None:
-        label = "Notifications (On)" if enabled else "Notifications (Off)"
-        self.notifications_toggle_action.setText(label)
-
-    def _set_logging_label(self, enabled: bool) -> None:
-        label = "Database Logging (On)" if enabled else "Database Logging (Off)"
-        self.logging_toggle_action.setText(label)
-
-    def _set_focus_label(self, enabled: bool) -> None:
-        label = "Focus Mode (On)" if enabled else "Focus Mode (Off)"
-        self.focus_mode_action.setText(label)
 
     def open_settings(self) -> None:
         active_camera_id = (
@@ -689,15 +775,12 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _refresh_after_settings_change(self) -> None:
         runtime = self._settings.runtime
         self.tracking_interval = runtime.selected_tracking_interval
-        self._set_notification_label(runtime.notifications_enabled)
         self.notifications_toggle_action.setChecked(runtime.notifications_enabled)
-        self._set_logging_label(runtime.enable_database_logging)
         self.logging_toggle_action.setChecked(runtime.enable_database_logging)
-        self._set_focus_label(runtime.focus_mode_enabled)
         self.focus_mode_action.setChecked(runtime.focus_mode_enabled)
         self._sync_database_logging_state()
 
-        menu = self.contextMenu()
+        menu = self._menu
         if menu:
             menu.removeAction(self.interval_menu_action)
             self.interval_menu = self._create_interval_menu(menu)
@@ -724,7 +807,6 @@ class PostureTrackerTray(QSystemTrayIcon):
                     logger.exception("Database logging could not be enabled")
                     self._settings.update_runtime(enable_database_logging=False)
                     self.logging_toggle_action.setChecked(False)
-                    self._set_logging_label(False)
                     self.export_action.setEnabled(False)
                     QMessageBox.warning(
                         None,

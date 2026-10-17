@@ -104,6 +104,9 @@ class DummyScoreService:
     def add_score(self, score: float) -> None:
         self.added_scores.append(score)
 
+    def trend_points(self):
+        return list(self.added_scores)
+
     def average_and_stats(self):
         latest = self.added_scores[-1] if self.added_scores else 0.0
         return latest, {
@@ -127,10 +130,15 @@ class DummyNotificationService:
     def maybe_notify_trend(self, score_service) -> None:
         return None
 
+    snooze_remaining_s = 0.0
+
+    def snooze(self, seconds: float) -> None:
+        self.snooze_remaining_s = float(seconds)
+
 
 def _build_tray(tmp_path, monkeypatch):
     monkeypatch.setattr(tray_module, "run_onboarding_if_needed", lambda settings: False)
-    monkeypatch.setattr(tray_module, "create_score_icon", lambda score: QIcon())
+    monkeypatch.setattr(tray_module, "create_score_icon", lambda *a, **k: QIcon())
     monkeypatch.setattr(
         tray_module.PostureTrackerTray, "_setup_signal_handling", lambda self: None
     )
@@ -416,3 +424,42 @@ def test_camera_failure_stops_tracking_and_shows_error(qapp, tmp_path, monkeypat
     assert messages == ["Camera unavailable"]
     assert "Camera unavailable" in tray.video_window.subtitle.text()
     tray.toggle_dashboard()
+
+
+def test_popover_reflects_tracking_state_and_snooze(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    tray._refresh_popover()
+    assert tray.popover.headline.text() == "Setup needed"  # onboarding skipped
+
+    tray._onboarding_cancelled = False
+    tray._refresh_popover()
+    assert tray.popover.headline.text() == "Not tracking"
+    assert tray.popover.tracking_button.text() == "Start tracking"
+
+    tray._start_tracking()
+    camera.latest_frame = object()
+    camera.latest_score = 82.0
+    camera.latest_pose_results = PoseDetectionResult(
+        SimpleNamespace(pose_landmarks=True), {"posture_score": 82.0}
+    )
+    tray._update_tracking()
+    tray._refresh_popover()
+    assert tray.popover.headline.text() == "Good posture"
+    assert tray.popover.ring.score == 82.0
+    assert tray.popover.tracking_button.text() == "Pause tracking"
+
+    tray._toggle_snooze()
+    tray._refresh_popover()
+    assert tray.snooze_action.isChecked()
+    assert "snoozed" in tray.popover.snooze_button.text()
+
+
+def test_popover_opens_on_click_and_closes_on_second_click(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    trigger = tray_module.QSystemTrayIcon.ActivationReason.Trigger
+
+    tray._on_activated(trigger)
+    assert tray.popover.isVisible()
+
+    tray._on_activated(trigger)
+    assert not tray.popover.isVisible()
