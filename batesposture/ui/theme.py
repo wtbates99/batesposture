@@ -148,12 +148,14 @@ QDialog {{ background: {c.canvas}; color: {c.text}; }}
 QLabel {{ color: {c.text}; background: transparent; }}
 QLabel#dashboardTitle {{ font-size: 18px; font-weight: 700; }}
 QLabel#dashboardSubtitle {{ color: {c.muted}; font-size: 11px; }}
-QLabel#liveScore {{ font-size: 28px; font-weight: 700; color: {c.accent}; }}
-QLabel#videoFeed {{ background: #101411; border: 1px solid {c.border}; border-radius: 8px; color: {c.muted}; }}
+QLabel#liveScore {{ font-size: 34px; font-weight: 700; color: {c.accent}; }}
+QLabel#liveGrade {{ color: {c.muted}; font-size: 12px; font-weight: 600; }}
 QLabel#videoOverlay {{ background: rgba(10, 14, 11, 190); border: 1px solid {c.border}; border-radius: 8px; color: #ffffff; padding: 16px; font-size: 15px; font-weight: 700; }}
-QLabel#statCard {{ background: {c.surface}; border: 1px solid {c.border}; border-radius: 8px; padding: 8px; }}
+QWidget#breakdownPanel {{ background: {c.surface}; border: 1px solid {c.border}; border-radius: 8px; }}
+QLabel#sessionSummary {{ color: {c.muted}; font-size: 12px; font-weight: 600; }}
 QLabel#chartLabel {{ color: {c.muted}; font-size: 11px; font-weight: 600; }}
 QLabel#feedback {{ background: {c.accent_soft}; border: 1px solid {c.border}; border-radius: 8px; color: {c.text}; padding: 10px 12px; font-weight: 600; }}
+QLabel#feedback[warn="true"] {{ background: {c.surface}; border: 1px solid {c.highlight}; }}
 """
 
 
@@ -166,6 +168,8 @@ QLabel {{ color: {c.text}; background: transparent; font-size: 13px; }}
 QLabel#brandName {{ color: {c.text}; font-size: 24px; font-weight: 700; }}
 QLabel#heroText {{ color: {c.text}; font-size: 15px; font-weight: 600; }}
 QLabel#supportText {{ color: {c.muted}; }}
+QLabel#framingStatus {{ color: {c.accent}; font-weight: 600; }}
+QLabel#framingStatus[warn="true"] {{ color: {c.highlight}; }}
 QLabel#cameraPreview {{ background: #101411; color: {c.muted}; border: 1px solid {c.border}; border-radius: 8px; }}
 QLabel#resultPanel {{ background: {c.accent_soft}; border: 1px solid {c.border}; border-radius: 8px; padding: 10px; }}
 QProgressBar {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 6px; min-height: 12px; text-align: center; color: {c.text}; }}
@@ -174,4 +178,5 @@ QPushButton {{ background: {c.surface}; color: {c.text}; border: 1px solid {c.bo
 QPushButton:hover {{ background: {c.surface_alt}; }}
 QPushButton#primaryButton {{ background: {c.accent}; color: #ffffff; border-color: {c.accent}; }}
 QPushButton#primaryButton:hover {{ background: {c.accent_hover}; }}
+QPushButton:disabled, QPushButton#primaryButton:disabled {{ background: {c.surface_alt}; color: {c.muted}; border-color: {c.border}; }}
 """

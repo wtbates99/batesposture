@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QStackedWidget,
-    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -28,21 +27,19 @@ from PyQt6.QtWidgets import (
 )
 
 from ..services.settings_service import SettingsService
+from .icons import line_icon
 from .theme import settings_stylesheet, theme_colors
 
 
 class SettingsDialog(QDialog):
+    # (key, label, line-icon name)
     SECTION_DEFS = [
-        ("appearance", "Appearance", QStyle.StandardPixmap.SP_DesktopIcon),
-        ("camera", "Camera & Video", QStyle.StandardPixmap.SP_ComputerIcon),
-        (
-            "notifications",
-            "Notifications",
-            QStyle.StandardPixmap.SP_MessageBoxInformation,
-        ),
-        ("tracking", "Tracking", QStyle.StandardPixmap.SP_BrowserReload),
-        ("data", "Data", QStyle.StandardPixmap.SP_DriveHDIcon),
-        ("advanced", "Advanced", QStyle.StandardPixmap.SP_FileDialogDetailedView),
+        ("appearance", "Appearance", "appearance"),
+        ("camera", "Camera & Video", "camera"),
+        ("notifications", "Notifications", "notifications"),
+        ("tracking", "Tracking", "tracking"),
+        ("data", "Data", "data"),
+        ("advanced", "Advanced", "advanced"),
     ]
 
     _PAGE_META = {
@@ -176,8 +173,10 @@ class SettingsDialog(QDialog):
         widget.setObjectName("navList")
         widget.setSpacing(2)
         widget.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        colors = theme_colors(self.profile_settings.preferred_theme)
+        widget.setIconSize(QSize(18, 18))
         for _, label, icon_name in self.SECTION_DEFS:
-            icon = self.style().standardIcon(icon_name)
+            icon = line_icon(icon_name, colors.sidebar_text)
             item = QListWidgetItem(icon, f"  {label}")
             item.setSizeHint(QSize(0, 44))
             widget.addItem(item)
@@ -334,16 +333,7 @@ class SettingsDialog(QDialog):
 
         self.camera_combo = QComboBox()
         self.camera_combo.setMinimumWidth(200)
-        cameras = self._available_cameras()
-        if cameras:
-            for cam_id, cam_name in cameras:
-                self.camera_combo.addItem(cam_name, cam_id)
-            idx = self.camera_combo.findData(self.runtime_settings.default_camera_id)
-            if idx != -1:
-                self.camera_combo.setCurrentIndex(idx)
-        else:
-            self.camera_combo.addItem("No camera found", -1)
-            self.camera_combo.setEnabled(False)
+        self._populate_camera_combo(self.runtime_settings.default_camera_id)
         form.addRow("Default camera:", self.camera_combo)
 
         self.fps_spinbox = QSpinBox()
@@ -351,52 +341,66 @@ class SettingsDialog(QDialog):
         self.fps_spinbox.setValue(self.runtime_settings.default_fps)
         self.fps_spinbox.setSuffix(" fps")
         self.fps_spinbox.setMinimumWidth(120)
-        form.addRow("Frame rate:", self.fps_spinbox)
+        form.addRow("Dashboard frame rate:", self.fps_spinbox)
 
-        self.width_spinbox = QSpinBox()
-        self.width_spinbox.setRange(100, 10000)
-        self.width_spinbox.setValue(self.runtime_settings.frame_width)
-        self.width_spinbox.setSuffix(" px")
-        self.width_spinbox.setMinimumWidth(110)
-
-        self.height_spinbox = QSpinBox()
-        self.height_spinbox.setRange(100, 10000)
-        self.height_spinbox.setValue(self.runtime_settings.frame_height)
-        self.height_spinbox.setSuffix(" px")
-        self.height_spinbox.setMinimumWidth(110)
-
-        res_row = QHBoxLayout()
-        res_row.setSpacing(8)
-        res_row.addWidget(self.width_spinbox)
-        x_lbl = QLabel("×")
-        x_lbl.setObjectName("helpText")
-        res_row.addWidget(x_lbl)
-        res_row.addWidget(self.height_spinbox)
-        res_row.addStretch()
-        form.addRow("Resolution:", res_row)
-
-        self.adaptive_resolution_checkbox = QCheckBox("Enable automatic adjustment")
-        self.adaptive_resolution_checkbox.setChecked(
-            self.runtime_settings.adaptive_resolution
+        self.resolution_combo = QComboBox()
+        self.resolution_combo.setMinimumWidth(200)
+        presets = [
+            ("Standard · 960 × 540", (960, 540)),
+            ("HD · 1280 × 720", (1280, 720)),
+            ("Full HD · 1920 × 1080", (1920, 1080)),
+        ]
+        current = (
+            self.runtime_settings.frame_width,
+            self.runtime_settings.frame_height,
         )
-        self.adaptive_resolution_checkbox.setToolTip(
-            "Drops to 640×480 at startup if MediaPipe initialisation takes over 100 ms."
-        )
-        form.addRow("Adaptive resolution:", self.adaptive_resolution_checkbox)
+        if current not in [size for _, size in presets]:
+            presets.append((f"Custom · {current[0]} × {current[1]}", current))
+        for index, (label, size) in enumerate(presets):
+            self.resolution_combo.addItem(label, size)
+            if size == current:
+                self.resolution_combo.setCurrentIndex(index)
+        form.addRow("Resolution:", self.resolution_combo)
 
         layout.addWidget(card)
-        layout.addWidget(
-            self._help_label(
-                (
-                    "Only cameras available right now are shown. "
-                    if self._camera_list_verified
-                    else "The configured camera will be checked when tracking starts. "
-                )
-                + "Higher resolution improves detection accuracy but increases CPU usage."
-            )
-        )
+        self.camera_help_label = self._help_label(self._camera_help_text())
+        layout.addWidget(self.camera_help_label)
         layout.addStretch()
         return container
+
+    def _camera_help_text(self) -> str:
+        return (
+            "Only cameras available right now are shown. "
+            if self._camera_list_verified
+            else "Detecting cameras… "
+        ) + (
+            "With the dashboard closed, tracking samples 2 frames per second. "
+            "Pose detection costs the same at any resolution; it mostly changes "
+            "how sharp the dashboard preview looks."
+        )
+
+    def _populate_camera_combo(self, selected_id: int) -> None:
+        self.camera_combo.clear()
+        cameras = self._available_cameras()
+        self.camera_combo.setEnabled(bool(cameras))
+        if not cameras:
+            self.camera_combo.addItem("No camera found", -1)
+            return
+        for cam_id, cam_name in cameras:
+            self.camera_combo.addItem(cam_name, cam_id)
+        idx = self.camera_combo.findData(selected_id)
+        if idx != -1:
+            self.camera_combo.setCurrentIndex(idx)
+
+    def set_available_cameras(self, camera_ids: list[int]) -> None:
+        """Replace the camera list once background detection finishes."""
+        selected = self.camera_combo.currentData()
+        if selected is None or selected == -1:
+            selected = self.runtime_settings.default_camera_id
+        self._available_camera_ids = camera_ids
+        self._camera_list_verified = True
+        self._populate_camera_combo(selected)
+        self.camera_help_label.setText(self._camera_help_text())
 
     def _create_notifications_page(self) -> QWidget:
         container, layout = self._page_container()
@@ -589,16 +593,17 @@ class SettingsDialog(QDialog):
         self.score_buffer_spinbox = QSpinBox()
         self.score_buffer_spinbox.setRange(10, 10000)
         self.score_buffer_spinbox.setValue(self.ml_settings.score_buffer_size)
-        self.score_buffer_spinbox.setSuffix(" frames")
+        self.score_buffer_spinbox.setSuffix(" samples")
         self.score_buffer_spinbox.setMinimumWidth(140)
         tuning_form.addRow("Score buffer size:", self.score_buffer_spinbox)
 
         self.score_window_spinbox = QSpinBox()
         self.score_window_spinbox.setRange(1, 100)
         self.score_window_spinbox.setValue(self.ml_settings.score_window_size)
-        self.score_window_spinbox.setSuffix(" frames")
+        # ScoreService averages over this many seconds, not frames
+        self.score_window_spinbox.setSuffix(" s")
         self.score_window_spinbox.setMinimumWidth(140)
-        tuning_form.addRow("Score window size:", self.score_window_spinbox)
+        tuning_form.addRow("Score smoothing window:", self.score_window_spinbox)
 
         self.score_threshold_spinbox = QSpinBox()
         self.score_threshold_spinbox.setRange(0, 100)
@@ -822,9 +827,8 @@ class SettingsDialog(QDialog):
         self._settings.update_runtime(
             default_camera_id=cam_id,
             default_fps=self.fps_spinbox.value(),
-            frame_width=self.width_spinbox.value(),
-            frame_height=self.height_spinbox.value(),
-            adaptive_resolution=self.adaptive_resolution_checkbox.isChecked(),
+            frame_width=self.resolution_combo.currentData()[0],
+            frame_height=self.resolution_combo.currentData()[1],
             notifications_enabled=self.notifications_enabled_checkbox.isChecked(),
             focus_mode_enabled=self.focus_mode_checkbox.isChecked(),
             notification_cooldown=self.cooldown_spinbox.value(),
