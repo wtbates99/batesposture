@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timedelta
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -53,6 +54,8 @@ class PostureTrackerTray(QSystemTrayIcon):
 
     # Emitted from the camera thread; Qt queues delivery onto the GUI thread.
     frame_processed = pyqtSignal()
+    camera_failed = pyqtSignal()
+    cameras_discovered = pyqtSignal(list)
 
     def __init__(
         self,
@@ -96,6 +99,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._setup_tray_menu()
         self._show_onboarding_handoff()
         self.frame_processed.connect(self._update_tracking)
+        self.camera_failed.connect(self._on_camera_failed)
         self._sync_processing_rate()
         self._scheduler.schedule("interval", 1000, self._check_interval)
         self._setup_signal_handling()
@@ -270,18 +274,13 @@ class PostureTrackerTray(QSystemTrayIcon):
             self._stop_tracking()
 
     def _start_tracking(self) -> None:
+        # The camera opens on its own thread; failures arrive via camera_failed.
         started = self._camera_service.start(
-            self._detector.process_frame, self.frame_processed.emit
+            self._detector.process_frame,
+            self.frame_processed.emit,
+            self.camera_failed.emit,
         )
         if not started:
-            if isinstance(self.video_window, PostureDashboard):
-                self.video_window.set_tracking_state("camera_error")
-            self.showMessage(
-                "Camera unavailable",
-                "BatesPosture could not access the selected camera. Check camera permissions and Settings.",
-                QSystemTrayIcon.MessageIcon.Warning,
-                5000,
-            )
             return
         self._scores.reset_session()
         self.tracking_enabled = True
@@ -299,6 +298,19 @@ class PostureTrackerTray(QSystemTrayIcon):
         if self._open_dashboard_on_first_tracking:
             self._open_dashboard_on_first_tracking = False
             self.toggle_dashboard()
+
+    def _on_camera_failed(self) -> None:
+        if not self.tracking_enabled:
+            return
+        self._stop_tracking(keep_dashboard=True)
+        if isinstance(self.video_window, PostureDashboard):
+            self.video_window.set_tracking_state("camera_error")
+        self.showMessage(
+            "Camera unavailable",
+            "BatesPosture could not access the selected camera. Check camera permissions and Settings.",
+            QSystemTrayIcon.MessageIcon.Warning,
+            5000,
+        )
 
     def _stop_tracking(self, keep_dashboard: bool = False) -> None:
         self._camera_service.stop()
@@ -627,9 +639,21 @@ class PostureTrackerTray(QSystemTrayIcon):
         active_camera_id = (
             self._settings.runtime.default_camera_id if self.tracking_enabled else None
         )
-        cameras = discover_camera_ids(active_camera_id=active_camera_id)
-        dialog = SettingsDialog(self._settings, available_camera_ids=cameras)
-        if dialog.exec() == QDialog.DialogCode.Accepted:  # type: ignore
+        # Each probe opens a camera (~1.4 s on macOS), so detect off the GUI
+        # thread and fill the list in when it's ready.
+        dialog = SettingsDialog(self._settings)
+        self.cameras_discovered.connect(dialog.set_available_cameras)
+        threading.Thread(
+            target=lambda: self.cameras_discovered.emit(
+                discover_camera_ids(active_camera_id=active_camera_id)
+            ),
+            daemon=True,
+        ).start()
+        try:
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted  # type: ignore
+        finally:
+            self.cameras_discovered.disconnect(dialog.set_available_cameras)
+        if accepted:
             self._refresh_after_settings_change()
             if dialog.recalibration_requested:
                 self._run_recalibration()

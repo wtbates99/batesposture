@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from unittest.mock import MagicMock
 
 from ..services import camera_service as camera_module
@@ -13,13 +14,53 @@ def _service(tmp_path):
     return CameraService(settings)
 
 
-def test_start_releases_camera_when_device_cannot_open(tmp_path, monkeypatch):
+def test_start_reports_failure_when_device_cannot_open(tmp_path, monkeypatch):
     monkeypatch.setattr(camera_module, "open_camera", lambda camera_id: None)
     service = _service(tmp_path)
+    failed = threading.Event()
 
-    assert not service.start()
+    assert service.start(on_failed=failed.set)
+    service._thread.join(timeout=2.0)
+
+    assert failed.is_set()
     assert service._cap is None
     assert not service._is_running.is_set()
+
+
+def test_start_opens_camera_off_the_calling_thread(tmp_path, monkeypatch):
+    opened_on = []
+    capture = MagicMock()
+    capture.read.return_value = (False, None)
+
+    def fake_open(camera_id):
+        opened_on.append(threading.current_thread())
+        return capture
+
+    monkeypatch.setattr(camera_module, "open_camera", fake_open)
+    service = _service(tmp_path)
+    failed = threading.Event()
+
+    assert service.start(on_failed=failed.set)
+    assert failed.wait(2.0)  # read failure is reported, not silent
+
+    assert opened_on and opened_on[0] is not threading.current_thread()
+    capture.release.assert_called_once_with()
+
+
+def test_stop_does_not_wait_out_the_frame_interval(tmp_path, monkeypatch):
+    capture = MagicMock()
+    capture.read.return_value = (True, "frame")
+    monkeypatch.setattr(camera_module, "open_camera", lambda camera_id: capture)
+    service = _service(tmp_path)
+    service.set_background(True)
+    published = threading.Event()
+
+    service.start(on_processed=published.set)
+    assert published.wait(2.0)
+    started = time.monotonic()
+    service.stop()
+
+    assert time.monotonic() - started < 0.2
 
 
 def test_failed_frame_read_stops_and_releases_camera(tmp_path):

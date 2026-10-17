@@ -135,3 +135,16 @@ def test_invalid_saved_theme_falls_back_to_system(tmp_path):
     store = SettingsStore(qsettings=qsettings, migrate_legacy=False)
 
     assert store.profile.preferred_theme == "system"
+
+
+def test_settings_camera_list_fills_in_after_background_detection(qapp, tmp_path):
+    settings = SettingsService.for_testing(tmp_path / "camera_async.ini")
+    dialog = SettingsDialog(settings)
+    assert "Detecting cameras" in dialog.camera_help_label.text()
+
+    dialog.set_available_cameras([0, 1])
+
+    assert [dialog.camera_combo.itemData(i) for i in range(2)] == [0, 1]
+    assert dialog.camera_combo.currentData() == 0
+    assert "Detecting" not in dialog.camera_help_label.text()
+    dialog.close()

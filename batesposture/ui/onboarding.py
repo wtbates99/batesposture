@@ -41,6 +41,8 @@ class CalibrationResult:
 class CameraPreviewWidget(QLabel):
     """Live camera preview; frames are read on CameraService's thread, not here."""
 
+    camera_failed = pyqtSignal()
+
     def __init__(
         self, settings: SettingsService, parent: QWidget | None = None
     ) -> None:
@@ -54,13 +56,18 @@ class CameraPreviewWidget(QLabel):
         self._frame = None
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._update_frame)
+        self.camera_failed.connect(self._show_camera_failed)
 
     def start(self) -> None:
         self.stop()
-        if not self._camera.start():
-            self.setText(self.tr("Unable to open camera"))
-            return
+        self.setText(self.tr("Starting camera…"))
+        self._camera.start(on_failed=self.camera_failed.emit)
         self._timer.start(40)
+
+    def _show_camera_failed(self) -> None:
+        self._timer.stop()
+        self.clear()
+        self.setText(self.tr("Unable to open camera"))
 
     def stop(self) -> None:
         if self._timer.isActive():

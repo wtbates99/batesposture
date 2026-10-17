@@ -33,10 +33,12 @@ class CameraService:
         self._frame_time = self._compute_frame_time()
         self._cap: cv2.VideoCapture | None = None
         self._is_running = Event()
+        self._stopping = Event()
         self._paused = Event()
         self._thread: Thread | None = None
         self._callback: FrameCallback | None = None
         self._on_processed: Callable[[], None] | None = None
+        self._on_failed: Callable[[], None] | None = None
         self._latest_frame = None
         self._latest_score = 0.0
         self._latest_pose_results = None
@@ -48,36 +50,58 @@ class CameraService:
         self,
         callback: FrameCallback | None = None,
         on_processed: Callable[[], None] | None = None,
+        on_failed: Callable[[], None] | None = None,
     ) -> bool:
-        """Start capturing; ``on_processed`` runs on the capture thread per frame."""
+        """Start capturing on a background thread; False if already running.
+
+        Opening a camera takes over a second on macOS, so it happens on the
+        capture thread. ``on_processed`` runs there after each frame and
+        ``on_failed`` if the camera cannot be opened or stops delivering frames.
+        """
         if self._is_running.is_set():
             return False
         self._callback = callback
         self._on_processed = on_processed
-        self._cap = open_camera(self._camera_id)
-        if self._cap is None:
-            return False
-        runtime = self._settings.runtime
-        # Ask the driver for the processing size up front instead of resizing
-        # every frame, and keep only the newest frame so slow polling isn't laggy.
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, runtime.frame_width)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, runtime.frame_height)
-        self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self._on_failed = on_failed
         self._paused.clear()
+        self._stopping.clear()
         self._is_running.set()
-        self._thread = Thread(target=self._capture_loop, daemon=True)
+        self._thread = Thread(target=self._run, daemon=True)
         self._thread.start()
-        logger.info("Camera %s started at %d FPS", self._camera_id, self._fps)
         return True
+
+    def _run(self) -> None:
+        capture = open_camera(self._camera_id)
+        if capture is None:
+            self._is_running.clear()
+            self._notify_failed()
+            return
+        # Keep only the newest frame so low-rate reads aren't stale. Frame size
+        # is left to the driver: setting it restarts the macOS capture session
+        # (~1.2 s) and inference cost doesn't depend on it.
+        capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self._cap = capture
+        if not self._is_running.is_set():  # stopped while the camera was opening
+            self._cap = None
+            capture.release()
+            return
+        logger.info("Camera %s started at %d FPS", self._camera_id, self._fps)
+        self._capture_loop()
+
+    def _notify_failed(self) -> None:
+        if self._on_failed:
+            self._on_failed()
 
     def stop(self) -> None:
         self._is_running.clear()
+        self._stopping.set()
         thread = self._thread
-        capture = self._cap
         if thread and thread != threading.current_thread():
             thread.join(timeout=2.0)
             if thread.is_alive():
                 logger.warning("Camera thread did not stop within 2 seconds")
+        # Read after the join: the thread may have finished opening meanwhile.
+        capture = self._cap
         if capture:
             capture.release()
         self._cap = None
@@ -146,6 +170,7 @@ class CameraService:
                 if not ret:
                     logger.warning("Failed to read frame from camera; stopping capture")
                     self.stop()
+                    self._notify_failed()
                     break
 
                 self._publish(frame)
@@ -153,6 +178,7 @@ class CameraService:
             except (cv2.error, OSError) as exc:
                 logger.error("Camera I/O error in capture loop; stopping: %s", exc)
                 self.stop()
+                self._notify_failed()
                 break
             except Exception:  # noqa: BLE001
                 logger.exception("Unexpected non-IO error in capture loop; stopping")
@@ -163,7 +189,8 @@ class CameraService:
             # _frame_time is a float; CPython's GIL makes this read atomic, and a
             # rate change landing mid-iteration only affects this one sleep.
             if processing_time < self._frame_time:
-                time.sleep(self._frame_time - processing_time)
+                # Interruptible, so stop() isn't held up by a 500 ms idle gap
+                self._stopping.wait(self._frame_time - processing_time)
 
     def _publish(self, frame) -> None:
         """Run the frame callback, store its result, and notify the listener."""

@@ -334,16 +334,7 @@ class SettingsDialog(QDialog):
 
         self.camera_combo = QComboBox()
         self.camera_combo.setMinimumWidth(200)
-        cameras = self._available_cameras()
-        if cameras:
-            for cam_id, cam_name in cameras:
-                self.camera_combo.addItem(cam_name, cam_id)
-            idx = self.camera_combo.findData(self.runtime_settings.default_camera_id)
-            if idx != -1:
-                self.camera_combo.setCurrentIndex(idx)
-        else:
-            self.camera_combo.addItem("No camera found", -1)
-            self.camera_combo.setEnabled(False)
+        self._populate_camera_combo(self.runtime_settings.default_camera_id)
         form.addRow("Default camera:", self.camera_combo)
 
         self.fps_spinbox = QSpinBox()
@@ -376,18 +367,43 @@ class SettingsDialog(QDialog):
         form.addRow("Resolution:", res_row)
 
         layout.addWidget(card)
-        layout.addWidget(
-            self._help_label(
-                (
-                    "Only cameras available right now are shown. "
-                    if self._camera_list_verified
-                    else "The configured camera will be checked when tracking starts. "
-                )
-                + "Higher resolution improves detection accuracy but increases CPU usage."
-            )
-        )
+        self.camera_help_label = self._help_label(self._camera_help_text())
+        layout.addWidget(self.camera_help_label)
         layout.addStretch()
         return container
+
+    def _camera_help_text(self) -> str:
+        return (
+            "Only cameras available right now are shown. "
+            if self._camera_list_verified
+            else "Detecting cameras… "
+        ) + (
+            "Pose detection costs the same at any resolution; it mostly changes "
+            "how sharp the dashboard preview looks."
+        )
+
+    def _populate_camera_combo(self, selected_id: int) -> None:
+        self.camera_combo.clear()
+        cameras = self._available_cameras()
+        self.camera_combo.setEnabled(bool(cameras))
+        if not cameras:
+            self.camera_combo.addItem("No camera found", -1)
+            return
+        for cam_id, cam_name in cameras:
+            self.camera_combo.addItem(cam_name, cam_id)
+        idx = self.camera_combo.findData(selected_id)
+        if idx != -1:
+            self.camera_combo.setCurrentIndex(idx)
+
+    def set_available_cameras(self, camera_ids: list[int]) -> None:
+        """Replace the camera list once background detection finishes."""
+        selected = self.camera_combo.currentData()
+        if selected is None or selected == -1:
+            selected = self.runtime_settings.default_camera_id
+        self._available_camera_ids = camera_ids
+        self._camera_list_verified = True
+        self._populate_camera_combo(selected)
+        self.camera_help_label.setText(self._camera_help_text())
 
     def _create_notifications_page(self) -> QWidget:
         container, layout = self._page_container()

@@ -13,7 +13,7 @@
 
 </div>
 
-![BatesPosture live dashboard: pose landmarks over a staged camera preview, an 86% score, the two-minute trend with a recovered slump, and session stats](docs/assets/dashboard.png)
+![BatesPosture live dashboard: a colour-coded posture skeleton over a staged camera preview, a 78 score with a per-measurement breakdown, the two-minute trend with a recovered slump, and the session summary](docs/assets/dashboard.png)
 
 BatesPosture watches a webcam locally, scores posture from 0–100, and sends a
 native notification when posture drops below a personal threshold. Calibration

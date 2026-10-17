@@ -56,7 +56,7 @@ class DummyCameraService:
     def reload_settings(self) -> None:
         self.reload_calls += 1
 
-    def start(self, callback=None, on_processed=None) -> bool:
+    def start(self, callback=None, on_processed=None, on_failed=None) -> bool:
         return True
 
     def stop(self) -> None:
@@ -399,4 +399,20 @@ def test_minimized_dashboard_drops_camera_to_background_rate(
     qapp.processEvents()
 
     assert camera.background is True
+    tray.toggle_dashboard()
+
+
+def test_camera_failure_stops_tracking_and_shows_error(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    messages = []
+    monkeypatch.setattr(tray, "showMessage", lambda title, *a: messages.append(title))
+    tray._start_tracking()
+    tray.toggle_dashboard()
+    assert tray.tracking_enabled
+
+    tray.camera_failed.emit()
+
+    assert not tray.tracking_enabled
+    assert messages == ["Camera unavailable"]
+    assert "Camera unavailable" in tray.video_window.subtitle.text()
     tray.toggle_dashboard()
