@@ -13,7 +13,7 @@
 
 </div>
 
-![BatesPosture dashboard with a synthetic camera preview, posture score, and session history](docs/assets/dashboard.png)
+![BatesPosture live dashboard: pose landmarks over a staged camera preview, an 86% score, the two-minute trend with a recovered slump, and session stats](docs/assets/dashboard.png)
 
 BatesPosture watches a webcam locally, scores posture from 0–100, and sends a
 native notification when posture drops below a personal threshold. Calibration
@@ -33,7 +33,7 @@ cloud uploads, or telemetry.
 | Adaptive processing | Frame-size and performance controls for slower hardware |
 | Auto-pause | Away-from-desk time is excluded when no person is detected |
 
-![BatesPosture onboarding calibration screen using a synthetic preview](docs/assets/onboarding.png)
+![BatesPosture calibration mid-capture: staged camera preview with pose landmarks, progress bar, and person-detected status](docs/assets/onboarding.png)
 
 ## Install
 
