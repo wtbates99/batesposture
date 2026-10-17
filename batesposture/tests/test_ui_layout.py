@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QLabel, QScrollArea
 
@@ -148,3 +149,28 @@ def test_settings_camera_list_fills_in_after_background_detection(qapp, tmp_path
     assert dialog.camera_combo.currentData() == 0
     assert "Detecting" not in dialog.camera_help_label.text()
     dialog.close()
+
+
+def test_video_frames_head_and_shoulders_then_eases_back_out(qapp):
+    import numpy as np
+
+    from ..ui.dashboard import VideoView
+
+    view = VideoView()
+    view.resize(640, 360)
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    points = np.full((33, 3), 0.5)
+    points[[7, 8], 1] = 0.40  # ears
+    points[[11, 12], 1] = 0.50  # shoulders: neck = 0.1 of the frame
+    points[[11, 12], 0] = (0.45, 0.55)
+
+    view.set_frame(frame, points)
+    framed = view._crop
+    assert framed.height() == pytest.approx(0.5 * 720)  # min zoom (4.5 * 0.1 < 0.5)
+    assert framed.width() / framed.height() == pytest.approx(640 / 360)
+    assert 0 <= framed.left() and framed.right() <= 1280
+
+    for _ in range(30):  # nobody detected for a while
+        view._crop_at -= 0.2
+        view.set_frame(frame)
+    assert view._crop.height() == pytest.approx(720, rel=0.02)

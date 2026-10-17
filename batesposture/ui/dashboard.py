@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
+from math import exp
 from time import monotonic
 
 import numpy as np
@@ -101,6 +102,19 @@ COMPONENTS = (
 _COMPONENTS_BY_KEY = {component.key: component for component in COMPONENTS}
 # Components below this need attention; the worst ones become the coaching cue.
 _COMPONENT_FLAG_BELOW = 0.75
+# Breakdown bars ease toward per-frame values instead of jittering at 15 Hz.
+_BAR_EASE_S = 0.35
+
+# Auto-framing: the crop eases toward the person's head and shoulders, and back
+# out to the whole frame when nobody is detected.
+_FRAMING_EASE_S = 0.6
+_FRAMING_NECKS_TALL = 4.5  # crop height in neck lengths (ear line → shoulders)
+_FRAMING_MIN_HEIGHT = 0.5  # never zoom in past half the frame height
+
+
+def _ease(dt: float, time_constant: float) -> float:
+    """Fraction of the remaining distance to cover after ``dt`` seconds."""
+    return 1.0 - exp(-max(dt, 0.0) / time_constant)
 
 
 def _set_text(label: QLabel, text: str) -> None:
@@ -250,7 +264,8 @@ class VideoView(QWidget):
 
     Only the landmarks that feed the score are drawn, and each segment is
     coloured by the component it measures, so the overlay shows *why* the
-    score moved. The frame is wrapped as a BGR QImage without copying.
+    score moved. The view fills its rect and frames the person's head and
+    shoulders. The frame is wrapped as a BGR QImage without copying.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -261,6 +276,8 @@ class VideoView(QWidget):
         self._component_values: dict[str, float | None] = {}
         self._theme_preference = "light"
         self._border = QColor("#d9e1da")
+        self._crop: QRectF | None = None  # in image pixels
+        self._crop_at = 0.0
         self.setMinimumSize(320, 180)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -282,18 +299,53 @@ class VideoView(QWidget):
         self._image = QImage(frame.data, w, h, 3 * w, QImage.Format.Format_BGR888)
         self._points = points
         self._component_values = component_values or {}
+        self._ease_crop(self._desired_crop(w, h), monotonic())
         self.update()
 
-    def _image_rect(self) -> QRectF:
-        bounds = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-        if self._image is None:
-            return bounds
-        scale = min(
-            bounds.width() / self._image.width(),
-            bounds.height() / self._image.height(),
+    def _aspect(self) -> float:
+        return max(self.width(), 1) / max(self.height(), 1)
+
+    def _desired_crop(self, w: int, h: int) -> QRectF:
+        points = self._points
+        if points is None:
+            crop_h, cx, cy = float(h), w / 2, h / 2
+        else:
+            ear_y = points[[PoseLandmark.LEFT_EAR, PoseLandmark.RIGHT_EAR], 1].mean()
+            shoulders = points[
+                [PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER]
+            ]
+            neck = max(float(shoulders[:, 1].mean() - ear_y), 0.02)
+            fraction = min(max(_FRAMING_NECKS_TALL * neck, _FRAMING_MIN_HEIGHT), 1.0)
+            crop_h = fraction * h
+            cx = float(shoulders[:, 0].mean()) * w
+            cy = float(ear_y + 0.4 * neck) * h
+        return _fit(
+            QRectF(cx - crop_h / 2, cy - crop_h / 2, crop_h, crop_h),
+            self._aspect(),
+            w,
+            h,
         )
-        w, h = self._image.width() * scale, self._image.height() * scale
-        return QRectF(bounds.center().x() - w / 2, bounds.center().y() - h / 2, w, h)
+
+    def _ease_crop(self, desired: QRectF, now: float) -> None:
+        current = self._crop
+        if current is None:
+            self._crop = desired
+        else:
+            a = _ease(now - self._crop_at, _FRAMING_EASE_S)
+            self._crop = QRectF(
+                current.x() + (desired.x() - current.x()) * a,
+                current.y() + (desired.y() - current.y()) * a,
+                current.width() + (desired.width() - current.width()) * a,
+                current.height() + (desired.height() - current.height()) * a,
+            )
+        self._crop_at = now
+
+    def _to_widget(self, crop: QRectF, x: float, y: float) -> QPointF:
+        image = self._image
+        return QPointF(
+            (x * image.width() - crop.x()) / crop.width() * self.width(),
+            (y * image.height() - crop.y()) / crop.height() * self.height(),
+        )
 
     def paintEvent(self, event):  # noqa: N802
         painter = QPainter(self)
@@ -305,24 +357,25 @@ class VideoView(QWidget):
         )
         painter.fillPath(frame_path, QColor("#101411"))
         painter.setClipPath(frame_path)
-        if self._image is not None:
-            target = self._image_rect()
-            painter.drawImage(target, self._image)
+        if self._image is not None and self._crop is not None:
+            # Re-fit to the current aspect in case the widget was just resized
+            crop = _fit(
+                self._crop, self._aspect(), self._image.width(), self._image.height()
+            )
+            painter.drawImage(QRectF(self.rect()), self._image, crop)
             if self._points is not None:
-                self._draw_skeleton(painter, target)
+                self._draw_skeleton(painter, crop)
         painter.setClipping(False)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(QPen(self._border, 1.0))
         painter.drawPath(frame_path)
 
-    def _draw_skeleton(self, painter: QPainter, target: QRectF) -> None:
+    def _draw_skeleton(self, painter: QPainter, crop: QRectF) -> None:
         points = self._points
 
         def _at(*indices: int) -> QPointF:
             x, y = points[list(indices), :2].mean(axis=0)
-            return QPointF(
-                target.left() + x * target.width(), target.top() + y * target.height()
-            )
+            return self._to_widget(crop, x, y)
 
         nose = _at(PoseLandmark.NOSE)
         left_ear, right_ear = _at(PoseLandmark.LEFT_EAR), _at(PoseLandmark.RIGHT_EAR)
@@ -358,6 +411,17 @@ class VideoView(QWidget):
         painter.setBrush(QColor("#ffffff"))
         for joint in joints:
             painter.drawEllipse(joint, 3.5, 3.5)
+
+
+def _fit(rect: QRectF, aspect: float, w: int, h: int) -> QRectF:
+    """Reshape ``rect`` to ``aspect`` about its centre, kept inside a w×h image."""
+    crop_h = min(rect.height(), float(h))
+    crop_w = crop_h * aspect
+    if crop_w > w:
+        crop_w, crop_h = float(w), w / aspect
+    x = min(max(rect.center().x() - crop_w / 2, 0.0), w - crop_w)
+    y = min(max(rect.center().y() - crop_h / 2, 0.0), h - crop_h)
+    return QRectF(x, y, crop_w, crop_h)
 
 
 class _ComponentRow(QWidget):
@@ -457,6 +521,8 @@ class PostureDashboard(QDialog):
         self._last_chart_sample_at: float | None = None
         self._tracking_state = "starting"
         self._component_values: dict[str, float | None] = {}
+        self._shown_values: dict[str, float | None] = {}
+        self._shown_at = 0.0
         self._score_css = ""
 
         outer_layout = QVBoxLayout(self)
@@ -646,8 +712,16 @@ class PostureDashboard(QDialog):
         }
         flagged = [] if self._is_good(score) else self._flagged_components(metrics)
         worst = flagged[0] if flagged else None
+        now = monotonic()
+        a = _ease(now - self._shown_at, _BAR_EASE_S)
+        self._shown_at = now
         for key, row in self.component_rows.items():
-            row.set_state(self._component_values[key], key == worst)
+            target = self._component_values[key]
+            shown = self._shown_values.get(key)
+            if target is not None and shown is not None:
+                target = shown + (target - shown) * a
+            self._shown_values[key] = target
+            row.set_state(target, key == worst)
 
     def _set_score_css(self, css: str) -> None:
         # setStyleSheet re-polishes the widget; only pay for it on a change.
