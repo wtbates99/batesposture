@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-import cv2
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QImage, QPixmap
@@ -22,6 +21,7 @@ from PyQt6.QtWidgets import (
 
 from ..ml.pose_detector import PoseDetector
 from ..services.camera_capture import open_camera
+from ..services.camera_service import CameraService
 from ..services.settings_service import (
     CALIBRATION_DURATION_SECONDS,
     CALIBRATION_TIMEOUT_MARGIN_SECONDS,
@@ -39,63 +39,61 @@ class CalibrationResult:
 
 
 class CameraPreviewWidget(QLabel):
-    def __init__(self, parent: QWidget | None = None) -> None:
+    """Live camera preview; frames are read on CameraService's thread, not here."""
+
+    def __init__(
+        self, settings: SettingsService, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("cameraPreview")
         self.setText(self.tr("Camera preview will appear here"))
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._camera_id = 0
+        self._camera = CameraService(settings)
+        self._camera.set_background(False)
+        self._last_seq = 0
+        self._frame = None
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._update_frame)
-        self._capture: cv2.VideoCapture | None = None
 
-    def start(self, camera_id: int) -> None:
+    def start(self) -> None:
         self.stop()
-        self._camera_id = camera_id
-        capture = open_camera(self._camera_id)
-        if capture is None:
+        if not self._camera.start():
             self.setText(self.tr("Unable to open camera"))
             return
-        self._capture = capture
         self._timer.start(40)
 
     def stop(self) -> None:
         if self._timer.isActive():
             self._timer.stop()
-        if self._capture:
-            self._capture.release()
-            self._capture = None
+        self._camera.stop()
+        self._frame = None
         self.clear()
 
     def _update_frame(self) -> None:
-        if not self._capture:
+        seq, frame, _, _ = self._camera.get_latest()
+        if frame is None or seq == self._last_seq:
             return
-        ret, frame = self._capture.read()
-        if not ret:
-            self.setText(self.tr("Camera feed unavailable"))
-            return
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        h, w, ch = frame.shape
-        image = QImage(frame.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        pixmap = QPixmap.fromImage(image).scaled(
-            self.width(),
-            self.height(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
+        self._last_seq = seq
+        self.show_frame(frame)
+
+    def show_frame(self, frame) -> None:
+        """Scale a BGR frame into the label (also used for calibration frames)."""
+        self._frame = frame
+        h, w = frame.shape[:2]
+        image = QImage(frame.data, w, h, 3 * w, QImage.Format.Format_BGR888)
+        self.setPixmap(
+            QPixmap.fromImage(image).scaled(
+                self.width(),
+                self.height(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
         )
-        self.setPixmap(pixmap)
 
     def resizeEvent(self, event):  # noqa: N802 - Qt override
         super().resizeEvent(event)
-        if self.pixmap():
-            self.setPixmap(
-                self.pixmap().scaled(
-                    self.width(),
-                    self.height(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-            )
+        if self._frame is not None:
+            self.show_frame(self._frame)
 
 
 class CalibrationWorker(QObject):
@@ -294,7 +292,7 @@ class CameraSetupPage(QWizardPage):
             self.tr("Center yourself and ensure your upper body is in frame.")
         )
 
-        self.preview = CameraPreviewWidget()
+        self.preview = CameraPreviewWidget(settings)
         self.preview.setMinimumHeight(240)
 
         guidance = QLabel(
@@ -313,7 +311,7 @@ class CameraSetupPage(QWizardPage):
         self.setLayout(layout)
 
     def initializePage(self) -> None:  # noqa: N802 - Qt override
-        self.preview.start(self._settings.runtime.default_camera_id)
+        self.preview.start()
 
     def cleanupPage(self) -> None:  # noqa: N802 - Qt override
         self.preview.stop()
@@ -346,7 +344,7 @@ class CalibrationPage(QWizardPage):
             )
         )
 
-        self.preview = CameraPreviewWidget()
+        self.preview = CameraPreviewWidget(settings)
         self.preview.setMinimumHeight(260)
 
         self.status_label = QLabel(
@@ -390,7 +388,7 @@ class CalibrationPage(QWizardPage):
         self._timeout: QTimer | None = None
 
     def initializePage(self) -> None:  # noqa: N802 - Qt override
-        self.preview.start(self._settings.runtime.default_camera_id)
+        self.preview.start()
 
     def cleanupPage(self) -> None:  # noqa: N802 - Qt override
         self.preview.stop()
@@ -454,16 +452,7 @@ class CalibrationPage(QWizardPage):
         )
 
     def _display_worker_frame(self, frame) -> None:
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        h, w, ch = frame_rgb.shape
-        image = QImage(frame_rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        pixmap = QPixmap.fromImage(image).scaled(
-            self.preview.width(),
-            self.preview.height(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self.preview.setPixmap(pixmap)
+        self.preview.show_frame(frame)
 
     def _handle_success(self, result: CalibrationResult) -> None:
         self._metrics = result
@@ -484,7 +473,7 @@ class CalibrationPage(QWizardPage):
         )
         self.results_label.setVisible(True)
         self._cleanup_worker()
-        self.preview.start(self._settings.runtime.default_camera_id)
+        self.preview.start()
         self.completeChanged.emit()
 
     def _handle_failure(self, message: str) -> None:
@@ -499,7 +488,7 @@ class CalibrationPage(QWizardPage):
         )
         self.results_label.setVisible(True)
         self._cleanup_worker()
-        self.preview.start(self._settings.runtime.default_camera_id)
+        self.preview.start()
 
     def _handle_timeout(self) -> None:
         if self._worker:

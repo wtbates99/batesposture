@@ -142,7 +142,7 @@ class ResourceSettings:
 @dataclass
 class RuntimeSettings:
     default_camera_id: int = 0
-    default_fps: int = 30
+    default_fps: int = 15
     frame_width: int = 1280
     frame_height: int = 720
     notification_cooldown: int = 300

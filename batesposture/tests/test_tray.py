@@ -56,7 +56,7 @@ class DummyCameraService:
     def reload_settings(self) -> None:
         self.reload_calls += 1
 
-    def start(self, callback=None) -> bool:
+    def start(self, callback=None, on_processed=None) -> bool:
         return True
 
     def stop(self) -> None:
@@ -64,10 +64,6 @@ class DummyCameraService:
 
     def set_background(self, background: bool) -> None:
         self.background = background
-
-    @property
-    def effective_fps(self) -> int:
-        return 2 if self.background else 30
 
     def get_latest(self):
         # Every poll sees a new frame unless a test pins the sequence number
@@ -390,3 +386,17 @@ def test_camera_runs_full_rate_only_while_dashboard_is_open(
 
     tray.toggle_dashboard()
     assert camera.background is True
+
+
+def test_minimized_dashboard_drops_camera_to_background_rate(
+    qapp, tmp_path, monkeypatch
+):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    tray.toggle_dashboard()
+    assert camera.background is False
+
+    tray.video_window.showMinimized()
+    qapp.processEvents()
+
+    assert camera.background is True
+    tray.toggle_dashboard()

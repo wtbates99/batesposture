@@ -155,6 +155,7 @@ QWidget#breakdownPanel {{ background: {c.surface}; border: 1px solid {c.border};
 QLabel#sessionSummary {{ color: {c.muted}; font-size: 12px; font-weight: 600; }}
 QLabel#chartLabel {{ color: {c.muted}; font-size: 11px; font-weight: 600; }}
 QLabel#feedback {{ background: {c.accent_soft}; border: 1px solid {c.border}; border-radius: 8px; color: {c.text}; padding: 10px 12px; font-weight: 600; }}
+QLabel#feedback[warn="true"] {{ background: {c.surface}; border: 1px solid {c.highlight}; }}
 """
 
 

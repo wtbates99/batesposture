@@ -51,3 +51,25 @@ def test_stop_releases_camera_when_thread_does_not_exit(tmp_path, caplog):
     thread.join.assert_called_once_with(timeout=2.0)
     capture.release.assert_called_once_with()
     assert "did not stop within 2 seconds" in caplog.text
+
+
+def test_processed_frames_are_published_with_sequence_and_notification(tmp_path):
+    service = _service(tmp_path)
+    notified = []
+    service._callback = lambda frame: (frame, 72.0, "pose")
+    service._on_processed = lambda: notified.append(True)
+
+    service._publish("frame")
+    service._publish("frame")
+
+    assert service.get_latest() == (2, "frame", 72.0, "pose")
+    assert len(notified) == 2
+
+
+def test_background_mode_caps_processing_rate(tmp_path):
+    service = _service(tmp_path)
+    service.set_background(False)
+    assert service._frame_time == 1 / service._fps
+
+    service.set_background(True)
+    assert service._frame_time == 1 / camera_module.BACKGROUND_FPS

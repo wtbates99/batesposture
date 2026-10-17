@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import lru_cache
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 
@@ -10,7 +12,11 @@ ICON_SIZE = 64
 
 def create_score_icon(score: float) -> QIcon:
     """Render a compact, color-coded posture score for the system tray."""
-    bounded_score = max(0.0, min(100.0, score))
+    return _render_score_icon(round(max(0.0, min(100.0, score))))
+
+
+@lru_cache(maxsize=101)
+def _render_score_icon(bounded_score: int) -> QIcon:
     color = QColor(score_color_hex(bounded_score))
 
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
@@ -29,8 +35,6 @@ def create_score_icon(score: float) -> QIcon:
     font.setPixelSize(24 if bounded_score < 100 else 20)
     painter.setFont(font)
     painter.setPen(QColor("#ffffff"))
-    painter.drawText(
-        pixmap.rect(), Qt.AlignmentFlag.AlignCenter, str(round(bounded_score))
-    )
+    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, str(bounded_score))
     painter.end()
     return QIcon(pixmap)

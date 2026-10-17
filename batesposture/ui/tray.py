@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QActionGroup, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
@@ -45,11 +45,14 @@ class PostureTrackerTray(QSystemTrayIcon):
     the camera → scoring → notification pipeline, manages the dashboard window and
     settings dialog, and handles graceful shutdown.
 
-    Frame updates poll at the camera's processing rate, which is lowered while no
-    dashboard is open; interval checks run on a 1 s QTimer (both via TaskScheduler).
-    Settings reloads use CameraService.pause_processing() to avoid mutating shared
+    The camera thread signals each processed frame (queued onto the Qt thread);
+    its rate is lowered while no dashboard is on screen. Interval checks run on a
+    1 s QTimer via TaskScheduler. Settings reloads use CameraService.pause_processing() to avoid mutating shared
     state while the camera thread is mid-frame.
     """
+
+    # Emitted from the camera thread; Qt queues delivery onto the GUI thread.
+    frame_processed = pyqtSignal()
 
     def __init__(
         self,
@@ -80,6 +83,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._break_reminder_sent = False
         self._last_icon_score: float = -1.0
         self._last_frame_seq = 0
+        self._last_tooltip = ""
         self._tracking_paused_for_absence = False
         self._absence_started_at: datetime | None = None
         self._auto_schedule_enabled = True
@@ -91,6 +95,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._run_onboarding_if_needed()
         self._setup_tray_menu()
         self._show_onboarding_handoff()
+        self.frame_processed.connect(self._update_tracking)
         self._sync_processing_rate()
         self._scheduler.schedule("interval", 1000, self._check_interval)
         self._setup_signal_handling()
@@ -103,7 +108,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         icon = QIcon(icon_path)
         app.setWindowIcon(icon)
         self.setIcon(icon)
-        self.setToolTip("BatesPosture — idle")
+        self._set_tooltip("BatesPosture — idle")
 
     def _run_onboarding_if_needed(self) -> None:
         if self._settings.profile.has_completed_onboarding:
@@ -265,7 +270,9 @@ class PostureTrackerTray(QSystemTrayIcon):
             self._stop_tracking()
 
     def _start_tracking(self) -> None:
-        started = self._camera_service.start(self._detector.process_frame)
+        started = self._camera_service.start(
+            self._detector.process_frame, self.frame_processed.emit
+        )
         if not started:
             if isinstance(self.video_window, PostureDashboard):
                 self.video_window.set_tracking_state("camera_error")
@@ -285,7 +292,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.toggle_tracking_action.setText("Stop Tracking")
         self.toggle_dashboard_action.setEnabled(True)
         self.setIcon(create_score_icon(0))
-        self.setToolTip("BatesPosture — starting camera…")
+        self._set_tooltip("BatesPosture — starting camera…")
         if isinstance(self.video_window, PostureDashboard):
             self.video_window.set_tracking_state("starting")
         logger.info("Tracking started")
@@ -312,14 +319,16 @@ class PostureTrackerTray(QSystemTrayIcon):
             "Hide Dashboard" if self.video_window else "Show Dashboard"
         )
         self.setIcon(QIcon(self.icon_path))
-        self.setToolTip("BatesPosture — idle")
+        self._set_tooltip("BatesPosture — idle")
         logger.info("Tracking stopped")
 
     def _sync_processing_rate(self) -> None:
-        """Run the full frame rate only while a dashboard is showing frames."""
-        self._camera_service.set_background(self.video_window is None)
-        interval_ms = max(1, 1000 // self._camera_service.effective_fps)
-        self._scheduler.schedule("frame", interval_ms, self._update_tracking)
+        """Run the full frame rate only while a dashboard is on screen."""
+        window = self.video_window
+        on_screen = (
+            window is not None and window.isVisible() and not window.isMinimized()
+        )
+        self._camera_service.set_background(not on_screen)
 
     def toggle_dashboard(self) -> None:
         if self.video_window:
@@ -343,6 +352,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             )
             self.video_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
             self.video_window.destroyed.connect(self._on_dashboard_closed)
+            self.video_window.on_screen_changed.connect(self._sync_processing_rate)
             screen = QApplication.primaryScreen()
             if screen:
                 available = screen.availableGeometry()
@@ -415,7 +425,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._notifications.maybe_notify_posture(average_score)
         self._notifications.maybe_notify_trend(self._scores)
         self._maybe_send_break_reminder()
-        self._update_tooltip(average_score)
+        self._update_tooltip(average_score, stats.get("current_streak_s", 0.0))
 
         if isinstance(self.video_window, PostureDashboard):
             self.video_window.update_score(average_score, metrics, stats)
@@ -434,7 +444,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             self._pause_tracking_for_absence()
 
         if self._tracking_paused_for_absence:
-            self.setToolTip("Away from desk — tracking paused")
+            self._set_tooltip("Away from desk — tracking paused")
             self.setIcon(QIcon(self.icon_path))
 
         if isinstance(self.video_window, PostureDashboard):
@@ -458,16 +468,21 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.last_db_save = None
         logger.info("Human detected again; resumed tracking")
 
-    def _update_tooltip(self, average_score: float) -> None:
+    def _update_tooltip(self, average_score: float, streak_s: float) -> None:
         grade = score_grade(average_score)
-        streak_s = self._scores.current_streak_s
         parts = [f"Posture: {average_score:.0f}% ({grade})"]
         if streak_s >= 60:
             minutes = int(streak_s) // 60
             parts.append(f"🔥 {minutes}m good posture streak")
         elif streak_s >= 10:
             parts.append(f"Streak: {int(streak_s)}s")
-        self.setToolTip(" | ".join(parts))
+        self._set_tooltip(" | ".join(parts))
+
+    def _set_tooltip(self, text: str) -> None:
+        # Each setToolTip round-trips to the native status item; skip repeats.
+        if text != self._last_tooltip:
+            self._last_tooltip = text
+            self.setToolTip(text)
 
     def _maybe_send_break_reminder(self) -> None:
         if self._break_reminder_sent or self._continuous_tracking_start is None:
@@ -518,7 +533,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             mins = int(remaining_s // 60)
             secs = int(remaining_s % 60)
             message = f"Next scan in {mins}:{secs:02d}"
-            self.setToolTip(message)
+            self._set_tooltip(message)
             if isinstance(self.video_window, PostureDashboard):
                 self.video_window.set_tracking_state("scheduled", message)
 

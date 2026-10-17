@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from functools import lru_cache
 from time import monotonic
 
 import numpy as np
-from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtCore import QEvent, QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
     QImage,
@@ -26,6 +27,7 @@ from PyQt6.QtWidgets import (
 from ..ml.mediapipe_compat import PoseLandmark
 from .theme import (
     dashboard_stylesheet,
+    is_dark_theme,
     score_color_hex,
     score_grade,
     theme_colors,
@@ -33,7 +35,13 @@ from .theme import (
 
 
 def _score_color(score: float, preference: str = "light") -> QColor:
-    return QColor(score_color_hex(score, preference))
+    """Return the shared (do not mutate) QColor for a score's band."""
+    return _qcolor(score_color_hex(score, preference))
+
+
+@lru_cache(maxsize=32)
+def _qcolor(hex_color: str) -> QColor:
+    return QColor(hex_color)
 
 
 def _metric_mean(metrics: dict[str, float], *keys: str) -> float:
@@ -93,6 +101,12 @@ COMPONENTS = (
 _COMPONENTS_BY_KEY = {component.key: component for component in COMPONENTS}
 # Components below this need attention; the worst ones become the coaching cue.
 _COMPONENT_FLAG_BELOW = 0.75
+
+
+def _set_text(label: QLabel, text: str) -> None:
+    # Skips the relayout a changed QLabel triggers when nothing changed.
+    if label.text() != text:
+        label.setText(text)
 
 
 def _format_duration(seconds: float) -> str:
@@ -199,16 +213,28 @@ class SparklineWidget(QWidget):
         fill_path.closeSubpath()
         painter.fillPath(fill_path, self.fill_color)
 
-        # Colour-coded line segments — reuse one QPen, only swap the colour
+        # Colour-coded line: one path per run of same-band segments
         pen = QPen(QColor(), 2.0)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        run_color: QColor | None = None
+        run_path = QPainterPath()
         for i in range(1, n):
-            x1, y1 = _xy(i - 1, self.values[i - 1])
-            x2, y2 = _xy(i, self.values[i])
             avg = (self.values[i - 1] + self.values[i]) / 2
-            pen.setColor(_score_color(avg, self._theme_preference))
-            painter.setPen(pen)
-            painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+            color = _score_color(avg, self._theme_preference)
+            if color is not run_color:
+                if run_color is not None:
+                    pen.setColor(run_color)
+                    painter.setPen(pen)
+                    painter.drawPath(run_path)
+                run_color = color
+                run_path = QPainterPath()
+                run_path.moveTo(*_xy(i - 1, self.values[i - 1]))
+            run_path.lineTo(*_xy(i, self.values[i]))
+        pen.setColor(run_color)
+        painter.setPen(pen)
+        painter.drawPath(run_path)
 
 
 class VideoView(QWidget):
@@ -396,6 +422,9 @@ class _ComponentRow(QWidget):
 
 
 class PostureDashboard(QDialog):
+    # Shown, hidden, minimized, or restored — the owner adjusts the frame rate.
+    on_screen_changed = pyqtSignal()
+
     def __init__(
         self,
         baseline_score: float,
@@ -420,6 +449,7 @@ class PostureDashboard(QDialog):
         self._last_chart_sample_at: float | None = None
         self._tracking_state = "starting"
         self._component_values: dict[str, float | None] = {}
+        self._score_css = ""
 
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(20, 18, 20, 20)
@@ -515,7 +545,23 @@ class PostureDashboard(QDialog):
         outer_layout.addWidget(self.feedback_label)
         self._apply_theme(preferred_theme)
 
+    def showEvent(self, event):  # noqa: N802
+        super().showEvent(event)
+        self.on_screen_changed.emit()
+
+    def hideEvent(self, event):  # noqa: N802
+        super().hideEvent(event)
+        self.on_screen_changed.emit()
+
+    def changeEvent(self, event):  # noqa: N802
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self.on_screen_changed.emit()
+
     def _apply_theme(self, preference: str) -> None:
+        # Resolve "system" once so per-paint colour lookups skip the palette.
+        preference = "dark" if is_dark_theme(preference) else "light"
+        self._theme_preference = preference
         colors = theme_colors(preference)
         self.setStyleSheet(dashboard_stylesheet(preference))
         accent = QColor(colors.accent)
@@ -595,11 +641,17 @@ class PostureDashboard(QDialog):
         for key, row in self.component_rows.items():
             row.set_state(self._component_values[key], key == worst)
 
+    def _set_score_css(self, css: str) -> None:
+        # setStyleSheet re-polishes the widget; only pay for it on a change.
+        if css != self._score_css:
+            self._score_css = css
+            self.score_label.setStyleSheet(css)
+
     def _update_stats(self, current: float, stats: dict | None) -> None:
         color = _score_color(current, self._theme_preference).name()
-        self.score_label.setText(f"{current:.0f}")
-        self.score_label.setStyleSheet(f"color: {color};")
-        self.grade_label.setText(score_grade(current))
+        _set_text(self.score_label, f"{current:.0f}")
+        self._set_score_css(f"color: {color};")
+        _set_text(self.grade_label, score_grade(current))
         if stats and stats.get("count", 0) > 0:
             parts = [
                 self.tr("Session {0}").format(
@@ -610,9 +662,9 @@ class PostureDashboard(QDialog):
             best = stats.get("best_streak_s", 0.0)
             if best >= 5:
                 parts.append(self.tr("best streak {0}").format(_format_duration(best)))
-            self.session_label.setText("  ·  ".join(parts))
+            _set_text(self.session_label, "  ·  ".join(parts))
         else:
-            self.session_label.setText(self.tr("Session —"))
+            _set_text(self.session_label, self.tr("Session —"))
 
     def set_tracking_state(self, state: str, detail: str | None = None) -> None:
         """Keep dashboard status, stale values, and video overlay in sync."""
@@ -636,12 +688,17 @@ class PostureDashboard(QDialog):
         self.session_label.setEnabled(active)
         if not active:
             muted = theme_colors(self._theme_preference).muted
-            self.score_label.setStyleSheet(f"color: {muted};")
+            self._set_score_css(f"color: {muted};")
 
     def _update_feedback_text(
         self, score: float, metrics: dict[str, float] | None
     ) -> None:
-        if self._is_good(score):
+        good = self._is_good(score)
+        if self.feedback_label.property("warn") != (not good):
+            self.feedback_label.setProperty("warn", not good)
+            self.feedback_label.style().unpolish(self.feedback_label)
+            self.feedback_label.style().polish(self.feedback_label)
+        if good:
             message = self.tr(
                 "Nice alignment! Keep a relaxed breath and soft shoulders."
             )
@@ -657,4 +714,4 @@ class PostureDashboard(QDialog):
                     )
                 )
             message = " ".join(cues[:2])
-        self.feedback_label.setText(message)
+        _set_text(self.feedback_label, message)

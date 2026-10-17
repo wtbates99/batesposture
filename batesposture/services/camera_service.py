@@ -36,6 +36,7 @@ class CameraService:
         self._paused = Event()
         self._thread: Thread | None = None
         self._callback: FrameCallback | None = None
+        self._on_processed: Callable[[], None] | None = None
         self._latest_frame = None
         self._latest_score = 0.0
         self._latest_pose_results = None
@@ -43,10 +44,16 @@ class CameraService:
         self._settings_lock = threading.Lock()
         self._processing_lock = threading.Lock()
 
-    def start(self, callback: FrameCallback | None = None) -> bool:
+    def start(
+        self,
+        callback: FrameCallback | None = None,
+        on_processed: Callable[[], None] | None = None,
+    ) -> bool:
+        """Start capturing; ``on_processed`` runs on the capture thread per frame."""
         if self._is_running.is_set():
             return False
         self._callback = callback
+        self._on_processed = on_processed
         self._cap = open_camera(self._camera_id)
         if self._cap is None:
             return False
@@ -90,11 +97,6 @@ class CameraService:
         with self._settings_lock:
             self._background = background
             self._frame_time = self._compute_frame_time()
-
-    @property
-    def effective_fps(self) -> int:
-        with self._settings_lock:
-            return round(1 / self._frame_time)
 
     def _compute_frame_time(self) -> float:
         fps = max(self._fps, 1)
@@ -146,20 +148,7 @@ class CameraService:
                     self.stop()
                     break
 
-                latest_score = 0.0
-                pose_results = None
-                with self._processing_lock:
-                    # process_frame is already infallible (returns (frame, 0.0, None) on error)
-                    if self._callback:
-                        processed = self._callback(frame)
-                        if isinstance(processed, tuple) and len(processed) == 3:
-                            frame, latest_score, pose_results = processed
-
-                with self._settings_lock:
-                    self._latest_frame = frame
-                    self._latest_score = latest_score
-                    self._latest_pose_results = pose_results
-                    self._frame_seq += 1
+                self._publish(frame)
 
             except (cv2.error, OSError) as exc:
                 logger.error("Camera I/O error in capture loop; stopping: %s", exc)
@@ -171,11 +160,29 @@ class CameraService:
                 break
 
             processing_time = time.monotonic() - start_time
-            # _frame_time is a float; CPython's GIL makes this read atomic.
-            # reload_settings() only runs while _paused is set (loop is idle),
-            # so this never races with a live capture iteration.
+            # _frame_time is a float; CPython's GIL makes this read atomic, and a
+            # rate change landing mid-iteration only affects this one sleep.
             if processing_time < self._frame_time:
                 time.sleep(self._frame_time - processing_time)
+
+    def _publish(self, frame) -> None:
+        """Run the frame callback, store its result, and notify the listener."""
+        latest_score = 0.0
+        pose_results = None
+        with self._processing_lock:
+            # process_frame is already infallible (returns (frame, 0.0, None) on error)
+            if self._callback:
+                processed = self._callback(frame)
+                if isinstance(processed, tuple) and len(processed) == 3:
+                    frame, latest_score, pose_results = processed
+
+        with self._settings_lock:
+            self._latest_frame = frame
+            self._latest_score = latest_score
+            self._latest_pose_results = pose_results
+            self._frame_seq += 1
+        if self._on_processed:
+            self._on_processed()
 
     def get_latest(self) -> tuple[int, Any, float, Any]:
         """Return (sequence, frame, score, pose_results) from one processed frame.
