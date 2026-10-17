@@ -65,6 +65,14 @@ def _model_path(model_complexity: int) -> str:
 _HIP_VISIBILITY_MIN = 0.5
 _SPINE_WEIGHT_INDEX = 4
 
+# Motion gate: inference is skipped while a coarse grayscale thumbnail stays
+# within this mean absolute difference (0–255) of the last inferred frame.
+# Sensor noise on a still scene measures ~0.8 (p90 ~1.5).
+_MOTION_THRESHOLD = 2.5
+_MOTION_STRIDE = 16
+# Re-run inference at least this often so slow drift is still caught.
+_MAX_REUSE_S = 2.0
+
 
 def _visibility(landmark: Any) -> float:
     value = getattr(landmark, "visibility", None)
@@ -86,8 +94,8 @@ class PoseDetectionResult:
 class PoseDetector:
     """Detects human posture from webcam frames using MediaPipe Pose.
 
-    Preprocesses each frame with CLAHE contrast enhancement, runs MediaPipe landmark
-    detection, computes seven weighted posture metrics (head tilt, neck angle, shoulder
+    Resizes each frame to the processing size, runs MediaPipe landmark
+    detection (skipped while the scene is still — see ``_MOTION_THRESHOLD``), computes seven weighted posture metrics (head tilt, neck angle, shoulder
     level, shoulder roll, spine alignment, head rotation, head side tilt), and returns a
     0–100 posture score alongside the preprocessed frame and detailed metric dict.
     Drawing is left to the UI so frames nobody looks at cost nothing extra.
@@ -107,8 +115,10 @@ class PoseDetector:
         self.score_thresholds: dict[str, float] = {}
         self.pose = None
         self._last_timestamp_ms = 0
-        # Cached CLAHE object — creating one per frame is expensive at 30 FPS
-        self._clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        self._reference_thumb: np.ndarray | None = None
+        self._reference_at = 0.0
+        self._reference_result: tuple[float, Any] = (0.0, None)
+        self.inference_count = 0
         self.reload()
         # Pre-warm MediaPipe so the first real frame isn't delayed by model init.
         # Use a noise frame (not zeros) so MediaPipe does real work — better proxy
@@ -158,29 +168,26 @@ class PoseDetector:
             logger.exception("Keeping the current pose model")
             return
         self.pose = new_pose
+        self._reference_thumb = None  # scoring settings may have changed
         if old_pose is not None and hasattr(old_pose, "close"):
             old_pose.close()
 
     def process_frame(self, frame: np.ndarray) -> tuple[np.ndarray, float, Any]:
         try:
+            thumb = cv2.cvtColor(
+                np.ascontiguousarray(frame[::_MOTION_STRIDE, ::_MOTION_STRIDE]),
+                cv2.COLOR_BGR2GRAY,
+            ).astype(np.int16)
             frame = self._preprocess_frame(frame)
-            results = self._detect_pose(frame)
-            if results.pose_landmarks:
-                landmarks = results.pose_landmarks.landmark
-                points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks])
-                hip_visibility = 0.5 * (
-                    _visibility(landmarks[PoseLandmark.LEFT_HIP])
-                    + _visibility(landmarks[PoseLandmark.RIGHT_HIP])
-                )
-                metrics = self._compute_posture_metrics_from_points(
-                    points, hip_visibility
-                )
-                return (
-                    frame,
-                    metrics["posture_score"],
-                    PoseDetectionResult(results, metrics, points),
-                )
-            return frame, 0.0, None
+            now = time.monotonic()
+            if self._scene_unchanged(thumb, now):
+                # Nothing moved: the previous landmarks still describe this frame.
+                return (frame, *self._reference_result)
+            score, bundle = self._infer(frame)
+            self._reference_thumb = thumb
+            self._reference_at = now
+            self._reference_result = (score, bundle)
+            return frame, score, bundle
         except (cv2.error, ValueError, np.linalg.LinAlgError) as exc:
             # Transient per-frame error (image conversion, bad landmark geometry) — skip frame
             logger.warning("Skipping frame due to recoverable error: %s", exc)
@@ -189,14 +196,37 @@ class PoseDetector:
             logger.exception("Unexpected error processing frame")
             return frame, 0.0, None
 
+    def _scene_unchanged(self, thumb: np.ndarray, now: float) -> bool:
+        reference = self._reference_thumb
+        return (
+            reference is not None
+            and reference.shape == thumb.shape
+            and now - self._reference_at < _MAX_REUSE_S
+            and float(np.abs(thumb - reference).mean()) < _MOTION_THRESHOLD
+        )
+
+    def _infer(self, frame: np.ndarray) -> tuple[float, PoseDetectionResult | None]:
+        self.inference_count += 1
+        results = self._detect_pose(frame)
+        if results.pose_landmarks:
+            landmarks = results.pose_landmarks.landmark
+            points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks])
+            hip_visibility = 0.5 * (
+                _visibility(landmarks[PoseLandmark.LEFT_HIP])
+                + _visibility(landmarks[PoseLandmark.RIGHT_HIP])
+            )
+            metrics = self._compute_posture_metrics_from_points(points, hip_visibility)
+            return metrics["posture_score"], PoseDetectionResult(
+                results, metrics, points
+            )
+        return 0.0, None
+
     def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
+        # No contrast enhancement: on real webcam frames CLAHE detected no more
+        # poses (fewer when dim) and cost ~25% of per-frame work.
         if frame.shape[1] != self.frame_width or frame.shape[0] != self.frame_height:
             frame = cv2.resize(frame, (self.frame_width, self.frame_height))
-        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-        l_channel, a, b = cv2.split(lab)
-        l_channel = self._clahe.apply(l_channel)
-        enhanced = cv2.merge([l_channel, a, b])
-        return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+        return frame
 
     def _detect_pose(self, frame: np.ndarray) -> Any:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

@@ -596,16 +596,17 @@ class SettingsDialog(QDialog):
         self.score_buffer_spinbox = QSpinBox()
         self.score_buffer_spinbox.setRange(10, 10000)
         self.score_buffer_spinbox.setValue(self.ml_settings.score_buffer_size)
-        self.score_buffer_spinbox.setSuffix(" frames")
+        self.score_buffer_spinbox.setSuffix(" samples")
         self.score_buffer_spinbox.setMinimumWidth(140)
         tuning_form.addRow("Score buffer size:", self.score_buffer_spinbox)
 
         self.score_window_spinbox = QSpinBox()
         self.score_window_spinbox.setRange(1, 100)
         self.score_window_spinbox.setValue(self.ml_settings.score_window_size)
-        self.score_window_spinbox.setSuffix(" frames")
+        # ScoreService averages over this many seconds, not frames
+        self.score_window_spinbox.setSuffix(" s")
         self.score_window_spinbox.setMinimumWidth(140)
-        tuning_form.addRow("Score window size:", self.score_window_spinbox)
+        tuning_form.addRow("Score smoothing window:", self.score_window_spinbox)
 
         self.score_threshold_spinbox = QSpinBox()
         self.score_threshold_spinbox.setRange(0, 100)

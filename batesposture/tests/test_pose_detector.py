@@ -1,3 +1,5 @@
+import time
+
 import cv2
 import numpy as np
 import pytest
@@ -195,3 +197,36 @@ class TestPoseDetector:
 
         score = pd._calculate_posture_score(perfect_landmarks)
         assert score > 90  # Perfect posture should score very high
+
+
+def test_still_scene_reuses_last_inference(pd):
+    frame = np.full((720, 1280, 3), 120, dtype=np.uint8)
+    pd.process_frame(frame)
+    count = pd.inference_count
+
+    pd.process_frame(frame.copy())
+
+    assert pd.inference_count == count
+
+
+def test_motion_triggers_fresh_inference(pd):
+    pd.process_frame(np.full((720, 1280, 3), 120, dtype=np.uint8))
+    count = pd.inference_count
+
+    pd.process_frame(np.full((720, 1280, 3), 160, dtype=np.uint8))
+
+    assert pd.inference_count == count + 1
+
+
+def test_reused_result_expires(pd, monkeypatch):
+    frame = np.full((720, 1280, 3), 120, dtype=np.uint8)
+    pd.process_frame(frame)
+    count = pd.inference_count
+    real_monotonic = time.monotonic
+    monkeypatch.setattr(
+        "batesposture.ml.pose_detector.time.monotonic", lambda: real_monotonic() + 5
+    )
+
+    pd.process_frame(frame)
+
+    assert pd.inference_count == count + 1
