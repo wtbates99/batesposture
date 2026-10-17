@@ -174,3 +174,15 @@ def test_video_frames_head_and_shoulders_then_eases_back_out(qapp):
         view._crop_at -= 0.2
         view.set_frame(frame)
     assert view._crop.height() == pytest.approx(720, rel=0.02)
+
+
+def test_resolution_presets_keep_custom_value(qapp, tmp_path):
+    from ..services.settings_service import SettingsService
+    from ..ui.settings_dialog import SettingsDialog
+
+    settings = SettingsService.for_testing(tmp_path / "settings.ini")
+    settings.update_runtime(frame_width=800, frame_height=600)
+    dialog = SettingsDialog(settings)
+    assert dialog.resolution_combo.currentData() == (800, 600)
+    dialog.resolution_combo.setCurrentIndex(1)
+    assert dialog.resolution_combo.currentData() == (1280, 720)

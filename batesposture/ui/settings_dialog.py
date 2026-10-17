@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QStackedWidget,
-    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -28,21 +27,19 @@ from PyQt6.QtWidgets import (
 )
 
 from ..services.settings_service import SettingsService
+from .icons import line_icon
 from .theme import settings_stylesheet, theme_colors
 
 
 class SettingsDialog(QDialog):
+    # (key, label, line-icon name)
     SECTION_DEFS = [
-        ("appearance", "Appearance", QStyle.StandardPixmap.SP_DesktopIcon),
-        ("camera", "Camera & Video", QStyle.StandardPixmap.SP_ComputerIcon),
-        (
-            "notifications",
-            "Notifications",
-            QStyle.StandardPixmap.SP_MessageBoxInformation,
-        ),
-        ("tracking", "Tracking", QStyle.StandardPixmap.SP_BrowserReload),
-        ("data", "Data", QStyle.StandardPixmap.SP_DriveHDIcon),
-        ("advanced", "Advanced", QStyle.StandardPixmap.SP_FileDialogDetailedView),
+        ("appearance", "Appearance", "appearance"),
+        ("camera", "Camera & Video", "camera"),
+        ("notifications", "Notifications", "notifications"),
+        ("tracking", "Tracking", "tracking"),
+        ("data", "Data", "data"),
+        ("advanced", "Advanced", "advanced"),
     ]
 
     _PAGE_META = {
@@ -176,8 +173,10 @@ class SettingsDialog(QDialog):
         widget.setObjectName("navList")
         widget.setSpacing(2)
         widget.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        colors = theme_colors(self.profile_settings.preferred_theme)
+        widget.setIconSize(QSize(18, 18))
         for _, label, icon_name in self.SECTION_DEFS:
-            icon = self.style().standardIcon(icon_name)
+            icon = line_icon(icon_name, colors.sidebar_text)
             item = QListWidgetItem(icon, f"  {label}")
             item.setSizeHint(QSize(0, 44))
             widget.addItem(item)
@@ -342,29 +341,26 @@ class SettingsDialog(QDialog):
         self.fps_spinbox.setValue(self.runtime_settings.default_fps)
         self.fps_spinbox.setSuffix(" fps")
         self.fps_spinbox.setMinimumWidth(120)
-        form.addRow("Frame rate:", self.fps_spinbox)
+        form.addRow("Dashboard frame rate:", self.fps_spinbox)
 
-        self.width_spinbox = QSpinBox()
-        self.width_spinbox.setRange(100, 10000)
-        self.width_spinbox.setValue(self.runtime_settings.frame_width)
-        self.width_spinbox.setSuffix(" px")
-        self.width_spinbox.setMinimumWidth(110)
-
-        self.height_spinbox = QSpinBox()
-        self.height_spinbox.setRange(100, 10000)
-        self.height_spinbox.setValue(self.runtime_settings.frame_height)
-        self.height_spinbox.setSuffix(" px")
-        self.height_spinbox.setMinimumWidth(110)
-
-        res_row = QHBoxLayout()
-        res_row.setSpacing(8)
-        res_row.addWidget(self.width_spinbox)
-        x_lbl = QLabel("×")
-        x_lbl.setObjectName("helpText")
-        res_row.addWidget(x_lbl)
-        res_row.addWidget(self.height_spinbox)
-        res_row.addStretch()
-        form.addRow("Resolution:", res_row)
+        self.resolution_combo = QComboBox()
+        self.resolution_combo.setMinimumWidth(200)
+        presets = [
+            ("Standard · 960 × 540", (960, 540)),
+            ("HD · 1280 × 720", (1280, 720)),
+            ("Full HD · 1920 × 1080", (1920, 1080)),
+        ]
+        current = (
+            self.runtime_settings.frame_width,
+            self.runtime_settings.frame_height,
+        )
+        if current not in [size for _, size in presets]:
+            presets.append((f"Custom · {current[0]} × {current[1]}", current))
+        for index, (label, size) in enumerate(presets):
+            self.resolution_combo.addItem(label, size)
+            if size == current:
+                self.resolution_combo.setCurrentIndex(index)
+        form.addRow("Resolution:", self.resolution_combo)
 
         layout.addWidget(card)
         self.camera_help_label = self._help_label(self._camera_help_text())
@@ -378,6 +374,7 @@ class SettingsDialog(QDialog):
             if self._camera_list_verified
             else "Detecting cameras… "
         ) + (
+            "With the dashboard closed, tracking samples 2 frames per second. "
             "Pose detection costs the same at any resolution; it mostly changes "
             "how sharp the dashboard preview looks."
         )
@@ -830,8 +827,8 @@ class SettingsDialog(QDialog):
         self._settings.update_runtime(
             default_camera_id=cam_id,
             default_fps=self.fps_spinbox.value(),
-            frame_width=self.width_spinbox.value(),
-            frame_height=self.height_spinbox.value(),
+            frame_width=self.resolution_combo.currentData()[0],
+            frame_height=self.resolution_combo.currentData()[1],
             notifications_enabled=self.notifications_enabled_checkbox.isChecked(),
             focus_mode_enabled=self.focus_mode_checkbox.isChecked(),
             notification_cooldown=self.cooldown_spinbox.value(),
