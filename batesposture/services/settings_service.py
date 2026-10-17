@@ -157,7 +157,6 @@ class RuntimeSettings:
     db_write_interval_seconds: int = 900
     notifications_enabled: bool = True
     focus_mode_enabled: bool = False
-    adaptive_resolution: bool = False
 
 
 @dataclass
@@ -606,7 +605,6 @@ LEGACY_KEY_TO_SECTION_FIELD: dict[str, tuple[str, str]] = {
     "DB_WRITE_INTERVAL_SECONDS": ("runtime", "db_write_interval_seconds"),
     "NOTIFICATIONS_ENABLED": ("runtime", "notifications_enabled"),
     "FOCUS_MODE_ENABLED": ("runtime", "focus_mode_enabled"),
-    "ADAPTIVE_RESOLUTION": ("runtime", "adaptive_resolution"),
     "HAS_COMPLETED_ONBOARDING": ("profile", "has_completed_onboarding"),
     "BASELINE_POSTURE_SCORE": ("profile", "baseline_posture_score"),
     "BASELINE_NECK_ANGLE": ("profile", "baseline_neck_angle"),

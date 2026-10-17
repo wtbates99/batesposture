@@ -20,7 +20,7 @@ from ..services.settings_service import (
     _default_posture_thresholds,
     get_app_data_dir,
 )
-from .mediapipe_compat import POSE_CONNECTIONS, PoseLandmark
+from .mediapipe_compat import PoseLandmark
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +60,23 @@ def _model_path(model_complexity: int) -> str:
     return str(path)
 
 
+# Below this mean hip visibility the hips are off-screen guesses, so the spine
+# metric is noise and drops out of the score.
+_HIP_VISIBILITY_MIN = 0.5
+_SPINE_WEIGHT_INDEX = 4
+
+
+def _visibility(landmark: Any) -> float:
+    value = getattr(landmark, "visibility", None)
+    return 1.0 if value is None else float(value)
+
+
 @dataclass
 class PoseDetectionResult:
     results: Any
     metrics: dict[str, float]
+    # (33, 3) normalized x, y, z landmark coordinates, for overlay drawing
+    points: np.ndarray | None = None
 
     @property
     def pose_landmarks(self) -> Any:
@@ -76,7 +89,8 @@ class PoseDetector:
     Preprocesses each frame with CLAHE contrast enhancement, runs MediaPipe landmark
     detection, computes seven weighted posture metrics (head tilt, neck angle, shoulder
     level, shoulder roll, spine alignment, head rotation, head side tilt), and returns a
-    0–100 posture score alongside annotated frame and detailed metric dict.
+    0–100 posture score alongside the preprocessed frame and detailed metric dict.
+    Drawing is left to the UI so frames nobody looks at cost nothing extra.
 
     process_frame() is infallible — all exceptions are caught and (frame, 0.0, None)
     is returned so the camera capture loop never stops due to a bad frame.
@@ -84,7 +98,6 @@ class PoseDetector:
 
     def __init__(self, settings: SettingsService) -> None:
         self._settings = settings
-        self.mp_draw = vision.drawing_utils
         self.posture_landmarks = settings.get_posture_landmarks()
         self.ideal_neck_vector = np.array([0, -1, 0])
         self.ideal_spine_vector = np.array([0, -1, 0])
@@ -153,15 +166,20 @@ class PoseDetector:
             frame = self._preprocess_frame(frame)
             results = self._detect_pose(frame)
             if results.pose_landmarks:
-                # Extract landmark array once — shared by metrics and drawing
-                points = np.array(
-                    [[lm.x, lm.y, lm.z] for lm in results.pose_landmarks.landmark]
+                landmarks = results.pose_landmarks.landmark
+                points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks])
+                hip_visibility = 0.5 * (
+                    _visibility(landmarks[PoseLandmark.LEFT_HIP])
+                    + _visibility(landmarks[PoseLandmark.RIGHT_HIP])
                 )
-                metrics = self._compute_posture_metrics_from_points(points)
-                posture_score = metrics["posture_score"]
-                self._draw_landmarks(frame, results, points)
-                self._draw_posture_feedback(frame, posture_score)
-                return frame, posture_score, PoseDetectionResult(results, metrics)
+                metrics = self._compute_posture_metrics_from_points(
+                    points, hip_visibility
+                )
+                return (
+                    frame,
+                    metrics["posture_score"],
+                    PoseDetectionResult(results, metrics, points),
+                )
             return frame, 0.0, None
         except (cv2.error, ValueError, np.linalg.LinAlgError) as exc:
             # Transient per-frame error (image conversion, bad landmark geometry) — skip frame
@@ -172,7 +190,8 @@ class PoseDetector:
             return frame, 0.0, None
 
     def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
-        frame = cv2.resize(frame, (self.frame_width, self.frame_height))
+        if frame.shape[1] != self.frame_width or frame.shape[0] != self.frame_height:
+            frame = cv2.resize(frame, (self.frame_width, self.frame_height))
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l_channel, a, b = cv2.split(lab)
         l_channel = self._clahe.apply(l_channel)
@@ -195,39 +214,6 @@ class PoseDetector:
         )
         return SimpleNamespace(pose_landmarks=pose_landmarks)
 
-    def _draw_landmarks(
-        self, frame: np.ndarray, results: Any, points: np.ndarray
-    ) -> None:
-        self.mp_draw.draw_landmarks(
-            frame,
-            results.pose_landmarks.landmark,
-            POSE_CONNECTIONS,
-            landmark_drawing_spec=self.mp_draw.DrawingSpec(
-                color=(0, 255, 0), thickness=2, circle_radius=2
-            ),
-            connection_drawing_spec=self.mp_draw.DrawingSpec(
-                color=(255, 255, 255), thickness=2
-            ),
-        )
-        if results.pose_landmarks:
-            h, w, _ = frame.shape
-            lh = PoseLandmark.LEFT_HIP
-            rh = PoseLandmark.RIGHT_HIP
-            ls = PoseLandmark.LEFT_SHOULDER
-            rs = PoseLandmark.RIGHT_SHOULDER
-            # Reuse pre-extracted points array instead of re-reading landmarks
-            mid_hip_x = (points[lh, 0] + points[rh, 0]) * 0.5
-            mid_hip_y = (points[lh, 1] + points[rh, 1]) * 0.5
-            mid_shoulder_x = (points[ls, 0] + points[rs, 0]) * 0.5
-            mid_shoulder_y = (points[ls, 1] + points[rs, 1]) * 0.5
-            cv2.line(
-                frame,
-                (int(mid_hip_x * w), int(mid_hip_y * h)),
-                (int(mid_shoulder_x * w), int(mid_shoulder_y * h)),
-                (0, 0, 255),
-                2,
-            )
-
     @staticmethod
     def angle_between(v1: np.ndarray, v2: np.ndarray) -> float:
         norm_v1 = np.linalg.norm(v1)
@@ -247,7 +233,7 @@ class PoseDetector:
         return self._compute_posture_metrics_from_points(points)
 
     def _compute_posture_metrics_from_points(
-        self, points: np.ndarray
+        self, points: np.ndarray, hip_visibility: float = 1.0
     ) -> dict[str, float]:
         nose = points[PoseLandmark.NOSE]
         ears = points[[PoseLandmark.LEFT_EAR, PoseLandmark.RIGHT_EAR]]
@@ -315,7 +301,13 @@ class PoseDetector:
                 head_side_tilt_score,
             ]
         )
-        posture_score = float(np.clip(np.dot(scores, self.weights) * 100, 0, 100))
+        hips_visible = hip_visibility >= _HIP_VISIBILITY_MIN
+        weights = self.weights
+        if not hips_visible and weights.sum() > weights[_SPINE_WEIGHT_INDEX]:
+            weights = weights.copy()
+            weights[_SPINE_WEIGHT_INDEX] = 0.0
+            weights /= weights.sum()
+        posture_score = float(np.clip(np.dot(scores, weights) * 100, 0, 100))
         return {
             "posture_score": posture_score,
             "neck_angle": float(neck_angle),
@@ -323,38 +315,16 @@ class PoseDetector:
             "spine_angle": float(spine_angle),
             "head_tilt_score": float(head_tilt_score),
             "neck_vertical_score": float(neck_vertical_score),
+            "shoulder_level_score": float(shoulder_scores[0]),
+            "shoulder_roll_score": float(shoulder_scores[1]),
             "spine_alignment_score": float(spine_alignment_score),
+            "head_rotation_score": float(head_rotation_score),
+            "head_side_tilt_score": float(head_side_tilt_score),
+            "hips_visible": float(hips_visible),
         }
 
     def _calculate_posture_score(self, landmarks: Any) -> float:
         return self._compute_posture_metrics(landmarks)["posture_score"]
-
-    def _draw_posture_feedback(self, frame: np.ndarray, score: float) -> None:
-        runtime = self._settings.runtime
-        score_color = (
-            0,
-            int(min(255, score * 2.55)),
-            int(min(255, (100 - score) * 2.55)),
-        )
-        cv2.putText(
-            frame,
-            f"Posture Score: {score:.1f}%",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            score_color,
-            2,
-        )
-        if score < runtime.poor_posture_threshold:
-            cv2.putText(
-                frame,
-                runtime.default_posture_message,
-                (10, 60),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 0, 255),
-                2,
-            )
 
     @staticmethod
     def _normalize_weights(weights: Any) -> np.ndarray:

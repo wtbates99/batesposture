@@ -36,23 +36,43 @@ def test_settings_theme_preview_updates_entire_dialog(qapp, tmp_path):
     assert DARK.canvas in dialog.styleSheet()
 
 
-def test_dashboard_stat_grid_remains_readable_at_minimum_size(qapp):
+def test_dashboard_breakdown_remains_readable_at_minimum_size(qapp):
     dashboard = PostureDashboard(78.0, "light")
     dashboard.resize(dashboard.minimumSize())
     dashboard.show()
     qapp.processEvents()
 
-    stats = [
-        label
-        for label in dashboard.findChildren(QLabel)
-        if label.objectName() == "statCard"
-    ]
-    assert len(stats) == 5
-    assert all(stat.width() >= 150 and stat.height() >= 54 for stat in stats)
-    assert not dashboard.video_label.geometry().intersects(
+    rows = list(dashboard.component_rows.values())
+    assert len(rows) == 5
+    assert all(row.width() >= 150 and row.height() >= 38 for row in rows)
+    assert dashboard.video_view.width() >= 320
+    assert not dashboard.video_view.geometry().intersects(
         dashboard.sparkline.geometry()
     )
 
+    dashboard.close()
+
+
+def test_dashboard_highlights_worst_component_and_coaches_on_it(qapp):
+    dashboard = PostureDashboard(78.0, "light")
+    metrics = {
+        "neck_angle": 30.0,
+        "shoulder_vertical_delta": 0.0,
+        "head_tilt_score": 0.9,
+        "neck_vertical_score": 0.3,
+        "head_side_tilt_score": 0.9,
+        "head_rotation_score": 0.9,
+        "shoulder_level_score": 0.95,
+        "shoulder_roll_score": 0.95,
+        "spine_alignment_score": 0.2,
+        "hips_visible": 0.0,
+    }
+
+    dashboard.update_score(50.0, metrics, None)
+
+    assert dashboard.component_rows["neck"].flagged
+    assert dashboard.component_rows["spine"].value is None
+    assert "head back" in dashboard.feedback_label.text()
     dashboard.close()
 
 

@@ -375,15 +375,6 @@ class SettingsDialog(QDialog):
         res_row.addStretch()
         form.addRow("Resolution:", res_row)
 
-        self.adaptive_resolution_checkbox = QCheckBox("Enable automatic adjustment")
-        self.adaptive_resolution_checkbox.setChecked(
-            self.runtime_settings.adaptive_resolution
-        )
-        self.adaptive_resolution_checkbox.setToolTip(
-            "Drops to 640×480 at startup if MediaPipe initialisation takes over 100 ms."
-        )
-        form.addRow("Adaptive resolution:", self.adaptive_resolution_checkbox)
-
         layout.addWidget(card)
         layout.addWidget(
             self._help_label(
@@ -824,7 +815,6 @@ class SettingsDialog(QDialog):
             default_fps=self.fps_spinbox.value(),
             frame_width=self.width_spinbox.value(),
             frame_height=self.height_spinbox.value(),
-            adaptive_resolution=self.adaptive_resolution_checkbox.isChecked(),
             notifications_enabled=self.notifications_enabled_checkbox.isChecked(),
             focus_mode_enabled=self.focus_mode_checkbox.isChecked(),
             notification_cooldown=self.cooldown_spinbox.value(),

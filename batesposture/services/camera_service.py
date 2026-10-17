@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 FrameCallback = Callable[[Any], Any]
 
+# Posture changes over seconds, so with no dashboard open a few frames per
+# second is plenty and inference cost drops by the ratio to the full rate.
+BACKGROUND_FPS = 2
+
 
 class CameraService:
     """Background camera reader that streams frames via callback."""
@@ -25,7 +29,8 @@ class CameraService:
         self._settings = settings
         self._camera_id = settings.runtime.default_camera_id
         self._fps = settings.runtime.default_fps
-        self._frame_time = 1 / max(self._fps, 1)
+        self._background = True
+        self._frame_time = self._compute_frame_time()
         self._cap: cv2.VideoCapture | None = None
         self._is_running = Event()
         self._paused = Event()
@@ -34,6 +39,7 @@ class CameraService:
         self._latest_frame = None
         self._latest_score = 0.0
         self._latest_pose_results = None
+        self._frame_seq = 0
         self._settings_lock = threading.Lock()
         self._processing_lock = threading.Lock()
 
@@ -44,6 +50,12 @@ class CameraService:
         self._cap = open_camera(self._camera_id)
         if self._cap is None:
             return False
+        runtime = self._settings.runtime
+        # Ask the driver for the processing size up front instead of resizing
+        # every frame, and keep only the newest frame so slow polling isn't laggy.
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, runtime.frame_width)
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, runtime.frame_height)
+        self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self._paused.clear()
         self._is_running.set()
         self._thread = Thread(target=self._capture_loop, daemon=True)
@@ -71,7 +83,24 @@ class CameraService:
         with self._settings_lock:
             self._camera_id = runtime.default_camera_id
             self._fps = runtime.default_fps
-            self._frame_time = 1 / max(self._fps, 1)
+            self._frame_time = self._compute_frame_time()
+
+    def set_background(self, background: bool) -> None:
+        """Process at BACKGROUND_FPS when nothing displays frames, else full rate."""
+        with self._settings_lock:
+            self._background = background
+            self._frame_time = self._compute_frame_time()
+
+    @property
+    def effective_fps(self) -> int:
+        with self._settings_lock:
+            return round(1 / self._frame_time)
+
+    def _compute_frame_time(self) -> float:
+        fps = max(self._fps, 1)
+        if self._background:
+            fps = min(fps, BACKGROUND_FPS)
+        return 1 / fps
 
     @contextlib.contextmanager
     def pause_processing(self) -> Iterator[None]:
@@ -130,6 +159,7 @@ class CameraService:
                     self._latest_frame = frame
                     self._latest_score = latest_score
                     self._latest_pose_results = pose_results
+                    self._frame_seq += 1
 
             except (cv2.error, OSError) as exc:
                 logger.error("Camera I/O error in capture loop; stopping: %s", exc)
@@ -147,10 +177,16 @@ class CameraService:
             if processing_time < self._frame_time:
                 time.sleep(self._frame_time - processing_time)
 
-    def get_latest_frame(self):
-        with self._settings_lock:
-            return self._latest_frame, self._latest_score
+    def get_latest(self) -> tuple[int, Any, float, Any]:
+        """Return (sequence, frame, score, pose_results) from one processed frame.
 
-    def get_latest_pose_results(self):
+        The sequence number increments per processed frame so callers can skip
+        results they have already consumed.
+        """
         with self._settings_lock:
-            return self._latest_pose_results
+            return (
+                self._frame_seq,
+                self._latest_frame,
+                self._latest_score,
+                self._latest_pose_results,
+            )

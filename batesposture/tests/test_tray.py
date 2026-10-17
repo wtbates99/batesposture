@@ -45,6 +45,9 @@ class DummyCameraService:
         self.latest_frame = None
         self.latest_score = 0.0
         self.latest_pose_results = None
+        self.background = True
+        self.seq = 0
+        self.fixed_seq = None
 
     @contextmanager
     def pause_processing(self):
@@ -59,11 +62,23 @@ class DummyCameraService:
     def stop(self) -> None:
         return None
 
-    def get_latest_frame(self):
-        return self.latest_frame, self.latest_score
+    def set_background(self, background: bool) -> None:
+        self.background = background
 
-    def get_latest_pose_results(self):
-        return self.latest_pose_results
+    @property
+    def effective_fps(self) -> int:
+        return 2 if self.background else 30
+
+    def get_latest(self):
+        # Every poll sees a new frame unless a test pins the sequence number
+        if self.fixed_seq is None:
+            self.seq += 1
+        return (
+            self.fixed_seq or self.seq,
+            self.latest_frame,
+            self.latest_score,
+            self.latest_pose_results,
+        )
 
 
 class DummyScoreService:
@@ -346,3 +361,32 @@ def test_scheduled_stop_keeps_dashboard_with_countdown(qapp, tmp_path, monkeypat
     dashboard.close()
     tray.video_window = None
     tray.hide()
+
+
+def test_same_camera_frame_is_scored_only_once(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    tray.tracking_enabled = True
+    camera.fixed_seq = 7
+    camera.latest_frame = object()
+    camera.latest_score = 80.0
+    camera.latest_pose_results = PoseDetectionResult(
+        SimpleNamespace(pose_landmarks=True), {"posture_score": 80.0}
+    )
+
+    tray._update_tracking()
+    tray._update_tracking()
+
+    assert scores.added_scores == [80.0]
+
+
+def test_camera_runs_full_rate_only_while_dashboard_is_open(
+    qapp, tmp_path, monkeypatch
+):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    assert camera.background is True
+
+    tray.toggle_dashboard()
+    assert camera.background is False
+
+    tray.toggle_dashboard()
+    assert camera.background is True

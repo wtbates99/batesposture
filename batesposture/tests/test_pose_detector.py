@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 import cv2
 import numpy as np
 import pytest
@@ -110,13 +108,6 @@ class TestPoseDetector:
         angle = pd.angle_between(vector1, vector2)
         assert abs(angle - expected_angle) < 0.01
 
-    def test_draw_posture_feedback(self, pd, mock_frame):
-        # Test representative values only
-        for score in [0, 100]:
-            pd._draw_posture_feedback(mock_frame, score)
-            assert isinstance(mock_frame, np.ndarray)
-            assert mock_frame.shape == (480, 640, 3)
-
     def test_landmark_list_validity(self, pd):
         essential_landmarks = {"NOSE", "LEFT_SHOULDER", "RIGHT_SHOULDER"}
         landmark_names = {lm.name for lm in pd.posture_landmarks}
@@ -129,27 +120,6 @@ class TestPoseDetector:
         )  # Different size gray frame
         processed_frame, _, _ = pd.process_frame(frame)
         assert processed_frame.shape == (720, 1280, 3)  # Check resize
-
-    def test_draw_landmarks(self, pd, mock_frame, mock_landmarks):
-        """Test landmark drawing functionality"""
-        landmarks = mock_landmarks(
-            {
-                0: (0.5, 0.5, 0),  # Nose
-                11: (0.4, 0.6, 0),  # Left shoulder
-                12: (0.6, 0.6, 0),  # Right shoulder
-                23: (0.4, 0.8, 0),  # Left hip
-                24: (0.6, 0.8, 0),  # Right hip
-            }
-        )
-
-        class MockResults:
-            def __init__(self, landmarks):
-                self.pose_landmarks = landmarks
-
-        results = MockResults(landmarks)
-        points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
-        pd._draw_landmarks(mock_frame, results, points)
-        assert isinstance(mock_frame, np.ndarray)
 
     @pytest.mark.parametrize(
         "score_thresholds",
@@ -173,6 +143,17 @@ class TestPoseDetector:
             == list(score_thresholds.values())[0]
         )
 
+    def test_spine_drops_out_of_score_when_hips_are_not_visible(self, pd):
+        points = np.full((33, 3), 0.5)
+        points[[11, 12], 1] = 0.6  # shoulders
+        points[[23, 24], 0] = (0.1, 0.2)  # hips far off-axis: bad spine angle
+        points[[23, 24], 1] = 0.9
+        visible = pd._compute_posture_metrics_from_points(points, 1.0)
+        hidden = pd._compute_posture_metrics_from_points(points, 0.1)
+        assert visible["spine_alignment_score"] < 0.5
+        assert hidden["hips_visible"] == 0.0
+        assert hidden["posture_score"] > visible["posture_score"]
+
     def test_weights_sum(self, pd):
         """Test that weights sum to approximately 1"""
         assert abs(np.sum(pd.weights) - 1.0) < 1e-6
@@ -183,32 +164,6 @@ class TestPoseDetector:
         settings_service.update_ml(posture_weights=[2.0] * 7)
         detector = PoseDetector(settings_service)
         assert np.allclose(detector.weights, np.full(7, 1 / 7))
-
-    def test_overlay_uses_runtime_threshold_and_message(
-        self, pd, mock_frame, settings_service
-    ):
-        settings_service.update_runtime(
-            poor_posture_threshold=80,
-            default_posture_message="Straighten up",
-        )
-        pd.reload()
-        with patch("batesposture.ml.pose_detector.cv2.putText") as mock_put_text:
-            pd._draw_posture_feedback(mock_frame, 75.0)
-        texts = [call.args[1] for call in mock_put_text.call_args_list]
-        assert "Straighten up" in texts
-
-    def test_overlay_skips_alert_text_above_runtime_threshold(
-        self, pd, mock_frame, settings_service
-    ):
-        settings_service.update_runtime(
-            poor_posture_threshold=60,
-            default_posture_message="Straighten up",
-        )
-        pd.reload()
-        with patch("batesposture.ml.pose_detector.cv2.putText") as mock_put_text:
-            pd._draw_posture_feedback(mock_frame, 75.0)
-        texts = [call.args[1] for call in mock_put_text.call_args_list]
-        assert "Straighten up" not in texts
 
     @pytest.mark.parametrize(
         "invalid_vector",

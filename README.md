@@ -26,7 +26,7 @@ cloud uploads, or telemetry.
 | --- | --- |
 | Live score | Seven weighted pose metrics become a color-coded 0–100 tray score |
 | Personal calibration | A six-second baseline adjusts feedback to the user's natural posture |
-| Session dashboard | History, average, minimum, maximum, best streak, and duration |
+| Session dashboard | Per-measurement breakdown, color-coded skeleton, trend, average, best streak, and duration |
 | Smart alerts | Native notifications with threshold, cooldown, and focus controls |
 | Scheduling | Continuous or interval tracking plus configurable break reminders |
 | Local history | Optional SQLite logging and CSV export |
@@ -118,7 +118,8 @@ uv build
 
 - **Camera does not open:** close other camera applications or try camera index `1`.
 - **Tracking pauses:** make sure the head and shoulders are visible and evenly lit.
-- **Performance is poor:** lower FPS or frame size and enable adaptive resolution.
+- **Performance is poor:** choose the Lite model; with the dashboard closed tracking already
+  drops to 2 FPS.
 - **CSV export is empty:** enable database logging before recording a session.
 
 ## License

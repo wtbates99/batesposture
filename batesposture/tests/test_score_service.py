@@ -198,3 +198,27 @@ def test_reload_picks_up_new_threshold(service, settings):
     with patch("batesposture.services.score_service.monotonic", return_value=2000.0):
         service.add_score(70.0)
         assert service.current_streak_s == 0.0
+
+
+def test_trend_survives_buffer_wraparound(service):
+    """10 scores/s for 5 minutes overflows the 1000-slot buffer; the trend must not."""
+    for tick in range(3000):
+        t = 1000.0 + tick / 10
+        score = 85.0 if t < 1060 else 60.0
+        with patch("batesposture.services.score_service.monotonic", return_value=t):
+            service.add_score(score)
+    with patch("batesposture.services.score_service.monotonic", return_value=1299.9):
+        decline = service.recent_decline()
+    assert decline == pytest.approx(25.0, rel=1e-3)
+
+
+def test_session_stats_cover_whole_session_after_wraparound(service):
+    with patch("batesposture.services.score_service.monotonic", return_value=1000.0):
+        service.add_score(10.0)
+    with patch("batesposture.services.score_service.monotonic", return_value=1100.0):
+        for _ in range(2000):
+            service.add_score(80.0)
+        stats = service.session_stats()
+    assert stats["count"] == 2001
+    assert stats["min"] == 10.0
+    assert stats["avg"] == pytest.approx((10.0 + 80.0 * 2000) / 2001, abs=0.05)

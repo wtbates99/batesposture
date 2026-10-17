@@ -9,7 +9,7 @@ from ..services.settings_service import SettingsService
 
 
 def _patch_application_services(monkeypatch, settings):
-    detector = MagicMock(prewarm_duration_ms=0.0)
+    detector = MagicMock()
     monkeypatch.setattr(application_module, "SettingsService", lambda: settings)
     monkeypatch.setattr(application_module, "TaskScheduler", MagicMock)
     monkeypatch.setattr(application_module, "PoseDetector", lambda value: detector)

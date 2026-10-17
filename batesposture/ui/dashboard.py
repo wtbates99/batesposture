@@ -1,21 +1,20 @@
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import dataclass
 from time import monotonic
 
-import cv2
-from PyQt6.QtCore import Qt
+import numpy as np
+from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import (
     QColor,
     QImage,
     QPainter,
     QPainterPath,
     QPen,
-    QPixmap,
 )
 from PyQt6.QtWidgets import (
     QDialog,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
@@ -24,6 +23,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ..ml.mediapipe_compat import PoseLandmark
 from .theme import (
     dashboard_stylesheet,
     score_color_hex,
@@ -34,6 +34,65 @@ from .theme import (
 
 def _score_color(score: float, preference: str = "light") -> QColor:
     return QColor(score_color_hex(score, preference))
+
+
+def _metric_mean(metrics: dict[str, float], *keys: str) -> float:
+    return sum(metrics[key] for key in keys) / len(keys)
+
+
+@dataclass(frozen=True)
+class _Component:
+    """One user-facing slice of the posture score."""
+
+    key: str
+    title: str
+    cue: str
+    metric_keys: tuple[str, ...]
+
+    def value(self, metrics: dict[str, float] | None) -> float | None:
+        """Return the 0–1 component score, or None when it can't be measured."""
+        if not metrics or any(key not in metrics for key in self.metric_keys):
+            return None
+        if self.key == "spine" and not metrics.get("hips_visible", 1.0):
+            return None
+        return _metric_mean(metrics, *self.metric_keys)
+
+
+COMPONENTS = (
+    _Component(
+        "head_forward",
+        "Head forward",
+        "Bring your chin back so your ears sit over your shoulders.",
+        ("head_tilt_score",),
+    ),
+    _Component(
+        "neck",
+        "Neck",
+        "Gently draw your head back over your shoulders.",
+        ("neck_vertical_score",),
+    ),
+    _Component(
+        "head_level",
+        "Head level",
+        "Face the screen squarely and level your head.",
+        ("head_side_tilt_score", "head_rotation_score"),
+    ),
+    _Component(
+        "shoulders",
+        "Shoulders",
+        "Level your shoulders and let them drop back.",
+        ("shoulder_level_score", "shoulder_roll_score"),
+    ),
+    _Component(
+        "spine",
+        "Spine",
+        "Lengthen through your spine and sit tall.",
+        ("spine_alignment_score",),
+    ),
+)
+_COMPONENTS_BY_KEY = {component.key: component for component in COMPONENTS}
+# Components below this need attention; the worst ones become the coaching cue.
+_COMPONENT_FLAG_BELOW = 0.75
 
 
 def _format_duration(seconds: float) -> str:
@@ -152,25 +211,188 @@ class SparklineWidget(QWidget):
             painter.drawLine(int(x1), int(y1), int(x2), int(y2))
 
 
-class _StatLabel(QLabel):
-    """Compact card-style label for a single statistic."""
+class VideoView(QWidget):
+    """Camera frame with a posture skeleton drawn by Qt.
 
-    def __init__(self, title: str, parent: QWidget | None = None) -> None:
+    Only the landmarks that feed the score are drawn, and each segment is
+    coloured by the component it measures, so the overlay shows *why* the
+    score moved. The frame is wrapped as a BGR QImage without copying.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._title = title
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setObjectName("statCard")
-        self.setMinimumHeight(54)
-        self.setWordWrap(True)
-        self._update_text("—")
+        self._frame: np.ndarray | None = None
+        self._image: QImage | None = None
+        self._points: np.ndarray | None = None
+        self._component_values: dict[str, float | None] = {}
+        self._theme_preference = "light"
+        self._border = QColor("#d9e1da")
+        self.setMinimumSize(320, 180)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-    def set_value(self, value: str) -> None:
-        self._update_text(value)
+    def set_theme(self, preference: str, border: QColor) -> None:
+        self._theme_preference = preference
+        self._border = border
+        self.update()
 
-    def _update_text(self, value: str) -> None:
-        self.setText(
-            f"<small style='opacity:0.6'>{self._title}</small><br><b>{value}</b>"
+    def set_frame(
+        self,
+        frame: np.ndarray,
+        points: np.ndarray | None = None,
+        component_values: dict[str, float | None] | None = None,
+    ) -> None:
+        frame = np.ascontiguousarray(frame)
+        h, w = frame.shape[:2]
+        # The QImage borrows frame's buffer; keep the array alive alongside it.
+        self._frame = frame
+        self._image = QImage(frame.data, w, h, 3 * w, QImage.Format.Format_BGR888)
+        self._points = points
+        self._component_values = component_values or {}
+        self.update()
+
+    def _image_rect(self) -> QRectF:
+        bounds = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        if self._image is None:
+            return bounds
+        scale = min(
+            bounds.width() / self._image.width(),
+            bounds.height() / self._image.height(),
         )
+        w, h = self._image.width() * scale, self._image.height() * scale
+        return QRectF(bounds.center().x() - w / 2, bounds.center().y() - h / 2, w, h)
+
+    def paintEvent(self, event):  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        frame_path = QPainterPath()
+        frame_path.addRoundedRect(
+            QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8
+        )
+        painter.fillPath(frame_path, QColor("#101411"))
+        painter.setClipPath(frame_path)
+        if self._image is not None:
+            target = self._image_rect()
+            painter.drawImage(target, self._image)
+            if self._points is not None:
+                self._draw_skeleton(painter, target)
+        painter.setClipping(False)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(self._border, 1.0))
+        painter.drawPath(frame_path)
+
+    def _draw_skeleton(self, painter: QPainter, target: QRectF) -> None:
+        points = self._points
+
+        def _at(*indices: int) -> QPointF:
+            x, y = points[list(indices), :2].mean(axis=0)
+            return QPointF(
+                target.left() + x * target.width(), target.top() + y * target.height()
+            )
+
+        nose = _at(PoseLandmark.NOSE)
+        left_ear, right_ear = _at(PoseLandmark.LEFT_EAR), _at(PoseLandmark.RIGHT_EAR)
+        mid_ear = _at(PoseLandmark.LEFT_EAR, PoseLandmark.RIGHT_EAR)
+        left_sh = _at(PoseLandmark.LEFT_SHOULDER)
+        right_sh = _at(PoseLandmark.RIGHT_SHOULDER)
+        mid_sh = _at(PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER)
+        segments = [
+            (left_ear, right_ear, "head_level"),
+            (nose, mid_ear, "head_forward"),
+            (mid_ear, mid_sh, "neck"),
+            (left_sh, right_sh, "shoulders"),
+        ]
+        joints = [nose, left_ear, right_ear, left_sh, right_sh]
+        if self._component_values.get("spine") is not None:
+            mid_hip = _at(PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP)
+            segments.append((mid_sh, mid_hip, "spine"))
+            joints.append(mid_hip)
+
+        pen = QPen(QColor(), 4.0)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        for start, end, key in segments:
+            value = self._component_values.get(key)
+            color = (
+                QColor(255, 255, 255, 200)
+                if value is None
+                else _score_color(value * 100, "dark")
+            )
+            pen.setColor(color)
+            painter.setPen(pen)
+            painter.drawLine(start, end)
+        painter.setPen(QPen(QColor(16, 20, 17, 220), 1.5))
+        painter.setBrush(QColor("#ffffff"))
+        for joint in joints:
+            painter.drawEllipse(joint, 3.5, 3.5)
+
+
+class _ComponentRow(QWidget):
+    """Label, value, and bar for one posture component."""
+
+    def __init__(
+        self, title: str, unavailable_text: str, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self.title = title
+        self._unavailable_text = unavailable_text
+        self.value: float | None = None
+        self.flagged = False
+        self._theme_preference = "light"
+        self._colors = theme_colors("light")
+        self.setObjectName("componentRow")
+        self.setMinimumHeight(38)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def set_theme(self, preference: str) -> None:
+        self._theme_preference = preference
+        self._colors = theme_colors(preference)
+        self.update()
+
+    def set_state(self, value: float | None, flagged: bool) -> None:
+        if value == self.value and flagged == self.flagged:
+            return
+        self.value = value
+        self.flagged = flagged
+        self.update()
+
+    def paintEvent(self, event):  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        c = self._colors
+        active = self.isEnabled() and self.value is not None
+        rect = QRectF(self.rect())
+
+        font = painter.font()
+        font.setPointSizeF(max(font.pointSizeF(), 11.0))
+        font.setBold(self.flagged and active)
+        painter.setFont(font)
+        text_rect = QRectF(rect.left(), rect.top(), rect.width(), 20)
+        painter.setPen(QColor(c.text if active else c.muted))
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            self.title,
+        )
+        if self.value is None:
+            detail = self._unavailable_text
+        else:
+            detail = f"{self.value * 100:.0f}"
+        painter.setPen(QColor(c.muted))
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            detail,
+        )
+
+        track = QRectF(rect.left(), rect.top() + 24, rect.width(), 6)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(c.surface_alt))
+        painter.drawRoundedRect(track, 3, 3)
+        if active:
+            fill = QRectF(track)
+            fill.setWidth(max(track.height(), track.width() * self.value))
+            painter.setBrush(_score_color(self.value * 100, self._theme_preference))
+            painter.drawRoundedRect(fill, 3, 3)
 
 
 class PostureDashboard(QDialog):
@@ -186,7 +408,7 @@ class PostureDashboard(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("BatesPosture · Live Dashboard")
-        self.setMinimumSize(620, 560)
+        self.setMinimumSize(640, 560)
         self.recent_scores: deque[float] = deque(maxlen=120)
         if history:
             self.recent_scores.extend(history)
@@ -197,6 +419,7 @@ class PostureDashboard(QDialog):
         self._theme_preference = preferred_theme
         self._last_chart_sample_at: float | None = None
         self._tracking_state = "starting"
+        self._component_values: dict[str, float | None] = {}
 
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(20, 18, 20, 20)
@@ -215,55 +438,67 @@ class PostureDashboard(QDialog):
         title_column.addWidget(self.subtitle)
         header_layout.addLayout(title_column)
         header_layout.addStretch()
+        score_column = QVBoxLayout()
+        score_column.setSpacing(0)
         self.score_label = QLabel("—")
         self.score_label.setObjectName("liveScore")
         self.score_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        header_layout.addWidget(self.score_label)
+        self.grade_label = QLabel("")
+        self.grade_label.setObjectName("liveGrade")
+        self.grade_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        score_column.addWidget(self.score_label)
+        score_column.addWidget(self.grade_label)
+        header_layout.addLayout(score_column)
 
-        # Video feed
-        self.video_label = QLabel(self.tr("Waiting for frames…"))
-        self.video_label.setObjectName("videoFeed")
-        self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.video_label.setMinimumSize(320, 180)
-        self.video_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        # Video feed with the "waiting" message stacked on top
+        self.video_view = VideoView()
         self.video_overlay = QLabel(self.tr("Starting camera…"))
         self.video_overlay.setObjectName("videoOverlay")
         self.video_overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_overlay.setWordWrap(True)
-
         video_container = QWidget()
         video_layout = QStackedLayout(video_container)
         video_layout.setContentsMargins(0, 0, 0, 0)
         video_layout.setStackingMode(QStackedLayout.StackingMode.StackAll)
-        video_layout.addWidget(self.video_label)
+        video_layout.addWidget(self.video_view)
         video_layout.addWidget(self.video_overlay)
+
+        # Per-component breakdown beside the video
+        breakdown = QWidget()
+        breakdown.setObjectName("breakdownPanel")
+        breakdown.setFixedWidth(210)
+        breakdown_layout = QVBoxLayout(breakdown)
+        breakdown_layout.setContentsMargins(14, 12, 14, 12)
+        breakdown_layout.setSpacing(6)
+        breakdown_title = QLabel(self.tr("BREAKDOWN"))
+        breakdown_title.setObjectName("chartLabel")
+        breakdown_layout.addWidget(breakdown_title)
+        self.component_rows: dict[str, _ComponentRow] = {}
+        for component in COMPONENTS:
+            row = _ComponentRow(
+                self.tr(component.title),
+                self.tr("hips out of view") if component.key == "spine" else "—",
+            )
+            self.component_rows[component.key] = row
+            breakdown_layout.addWidget(row)
+        breakdown_layout.addStretch()
+        self._breakdown = breakdown
+
+        body = QHBoxLayout()
+        body.setSpacing(12)
+        body.addWidget(video_container, 1)
+        body.addWidget(breakdown)
 
         # Sparkline
         self.sparkline = SparklineWidget()
         self.sparkline.set_reference_lines(alert_threshold, baseline_score)
         chart_label = QLabel(
-            self.tr("POSTURE TREND · LAST 2 MINUTES · DOTTED: BASELINE · DASHED: ALERT")
+            self.tr("TREND · LAST 2 MINUTES · DOTTED: BASELINE · DASHED: ALERT")
         )
         chart_label.setObjectName("chartLabel")
 
-        # Stats row
-        stats_row = QWidget()
-        stats_layout = QGridLayout(stats_row)
-        stats_layout.setContentsMargins(0, 0, 0, 0)
-        stats_layout.setHorizontalSpacing(8)
-        stats_layout.setVerticalSpacing(8)
-        self._stat_avg = _StatLabel(self.tr("Session Avg"))
-        self._stat_min = _StatLabel(self.tr("Session Min"))
-        self._stat_max = _StatLabel(self.tr("Session Max"))
-        self._stat_streak = _StatLabel(self.tr("Best Streak"))
-        self._stat_duration = _StatLabel(self.tr("Duration"))
-        for index, stat in enumerate((self._stat_avg, self._stat_min, self._stat_max)):
-            stats_layout.addWidget(stat, 0, index * 2, 1, 2)
-        stats_layout.addWidget(self._stat_streak, 1, 0, 1, 3)
-        stats_layout.addWidget(self._stat_duration, 1, 3, 1, 3)
-        self._stats_row = stats_row
+        self.session_label = QLabel(self.tr("Session —"))
+        self.session_label.setObjectName("sessionSummary")
 
         # Coaching / alert text
         self.feedback_label = QLabel(
@@ -273,10 +508,10 @@ class PostureDashboard(QDialog):
         self.feedback_label.setWordWrap(True)
 
         outer_layout.addWidget(header)
-        outer_layout.addWidget(video_container, 1)
+        outer_layout.addLayout(body, 1)
         outer_layout.addWidget(chart_label)
         outer_layout.addWidget(self.sparkline)
-        outer_layout.addWidget(stats_row)
+        outer_layout.addWidget(self.session_label)
         outer_layout.addWidget(self.feedback_label)
         self._apply_theme(preferred_theme)
 
@@ -291,25 +526,19 @@ class PostureDashboard(QDialog):
             QColor(colors.muted),
             preference,
         )
+        self.video_view.set_theme(preference, QColor(colors.border))
+        for row in self.component_rows.values():
+            row.set_theme(preference)
 
     def get_history(self) -> list[float]:
         """Return current sparkline scores for persistence."""
         return list(self.recent_scores)
 
-    def update_frame(self, frame) -> None:
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        h, w, ch = rgb_frame.shape
-        image = QImage(rgb_frame.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        pixmap = QPixmap.fromImage(image)
-        ratio = self.devicePixelRatioF()
-        pixmap.setDevicePixelRatio(ratio)
-        scaled = pixmap.scaled(
-            int(self.video_label.width() * ratio),
-            int(self.video_label.height() * ratio),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
+    def update_frame(self, frame, points: np.ndarray | None = None) -> None:
+        """Show a frame; pass pose points to draw the skeleton over it."""
+        self.video_view.set_frame(
+            frame, points, self._component_values if points is not None else None
         )
-        self.video_label.setPixmap(scaled)
 
     def update_score(
         self,
@@ -325,37 +554,65 @@ class PostureDashboard(QDialog):
             self.recent_scores.append(score)
             self.sparkline.update_values(list(self.recent_scores))
             self._last_chart_sample_at = now
+        self._update_components(score, metrics)
         self._update_feedback_text(score, metrics)
         self._update_stats(score, session_stats)
 
-    def _update_stats(self, current: float, stats: dict | None) -> None:
-        grade = score_grade(current)
-        color = _score_color(current, self._theme_preference).name()
-        self.score_label.setText(f"{current:.0f}%  {grade}")
-        self.score_label.setStyleSheet(f"color: {color};")
-        if stats and stats.get("count", 0) > 0:
-            self._stat_avg.set_value(f"{stats['avg']:.0f}")
-            self._stat_min.set_value(
-                f"<span style='color:#e05050'>{stats['min']:.0f}</span>"
-            )
-            self._stat_max.set_value(
-                f"<span style='color:#4caf50'>{stats['max']:.0f}</span>"
-            )
-            best = stats.get("best_streak_s", 0.0)
-            streak_str = _format_duration(best) if best >= 5 else "—"
-            self._stat_streak.set_value(streak_str)
-            self._stat_duration.set_value(
-                _format_duration(stats.get("duration_s", 0.0))
-            )
-        else:
-            for stat in (
-                self._stat_avg,
-                self._stat_min,
-                self._stat_max,
-                self._stat_streak,
-                self._stat_duration,
+    def _flagged_components(self, metrics: dict[str, float] | None) -> list[str]:
+        """Return component keys needing attention, worst first.
+
+        Neck and shoulders are judged against the calibrated baseline so a
+        person's natural posture doesn't trigger constant corrections.
+        """
+        if not metrics:
+            return []
+        flagged = []
+        for key, value in self._component_values.items():
+            if value is None or value >= _COMPONENT_FLAG_BELOW:
+                continue
+            if key == "neck" and metrics.get("neck_angle", 0.0) <= (
+                self.baseline_neck_angle + 5.0
             ):
-                stat.set_value("—")
+                continue
+            if key == "shoulders" and metrics.get("shoulder_vertical_delta", 0.0) <= (
+                self.baseline_shoulder_level + 0.02
+            ):
+                continue
+            flagged.append(key)
+        return sorted(flagged, key=lambda key: self._component_values[key])
+
+    def _is_good(self, score: float) -> bool:
+        return score >= max(self.baseline_score - 5, 70)
+
+    def _update_components(
+        self, score: float, metrics: dict[str, float] | None
+    ) -> None:
+        self._component_values = {
+            component.key: component.value(metrics) for component in COMPONENTS
+        }
+        flagged = [] if self._is_good(score) else self._flagged_components(metrics)
+        worst = flagged[0] if flagged else None
+        for key, row in self.component_rows.items():
+            row.set_state(self._component_values[key], key == worst)
+
+    def _update_stats(self, current: float, stats: dict | None) -> None:
+        color = _score_color(current, self._theme_preference).name()
+        self.score_label.setText(f"{current:.0f}")
+        self.score_label.setStyleSheet(f"color: {color};")
+        self.grade_label.setText(score_grade(current))
+        if stats and stats.get("count", 0) > 0:
+            parts = [
+                self.tr("Session {0}").format(
+                    _format_duration(stats.get("duration_s", 0.0))
+                ),
+                self.tr("avg {0:.0f}").format(stats["avg"]),
+            ]
+            best = stats.get("best_streak_s", 0.0)
+            if best >= 5:
+                parts.append(self.tr("best streak {0}").format(_format_duration(best)))
+            self.session_label.setText("  ·  ".join(parts))
+        else:
+            self.session_label.setText(self.tr("Session —"))
 
     def set_tracking_state(self, state: str, detail: str | None = None) -> None:
         """Keep dashboard status, stale values, and video overlay in sync."""
@@ -375,7 +632,8 @@ class PostureDashboard(QDialog):
         active = state == "tracking"
         self.video_overlay.setVisible(not active)
         self.video_overlay.setText(message)
-        self._stats_row.setEnabled(active)
+        self._breakdown.setEnabled(active)
+        self.session_label.setEnabled(active)
         if not active:
             muted = theme_colors(self._theme_preference).muted
             self.score_label.setStyleSheet(f"color: {muted};")
@@ -383,23 +641,15 @@ class PostureDashboard(QDialog):
     def _update_feedback_text(
         self, score: float, metrics: dict[str, float] | None
     ) -> None:
-        if score >= max(self.baseline_score - 5, 70):
+        if self._is_good(score):
             message = self.tr(
                 "Nice alignment! Keep a relaxed breath and soft shoulders."
             )
         else:
-            cues: list[str] = []
-            if metrics:
-                neck_threshold = self.baseline_neck_angle + 5.0
-                shoulder_threshold = self.baseline_shoulder_level + 0.02
-                if metrics.get("neck_angle", 0.0) > neck_threshold:
-                    cues.append(
-                        self.tr("Gently draw your head back over your shoulders.")
-                    )
-                if metrics.get("shoulder_vertical_delta", 0.0) > shoulder_threshold:
-                    cues.append(self.tr("Level your shoulders to center your posture."))
-                if metrics.get("spine_angle", 0.0) > 10.0:
-                    cues.append(self.tr("Lengthen through your spine and sit tall."))
+            cues = [
+                self.tr(_COMPONENTS_BY_KEY[key].cue)
+                for key in self._flagged_components(metrics)
+            ]
             if not cues:
                 cues.append(
                     self.tr(

@@ -45,9 +45,10 @@ class PostureTrackerTray(QSystemTrayIcon):
     the camera → scoring → notification pipeline, manages the dashboard window and
     settings dialog, and handles graceful shutdown.
 
-    Frame updates run on a 100 ms QTimer; interval checks run on a 1 s QTimer (both
-    via TaskScheduler). Settings reloads use CameraService.pause_processing() to avoid
-    mutating shared state while the camera thread is mid-frame.
+    Frame updates poll at the camera's processing rate, which is lowered while no
+    dashboard is open; interval checks run on a 1 s QTimer (both via TaskScheduler).
+    Settings reloads use CameraService.pause_processing() to avoid mutating shared
+    state while the camera thread is mid-frame.
     """
 
     def __init__(
@@ -78,6 +79,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._continuous_tracking_start: datetime | None = None
         self._break_reminder_sent = False
         self._last_icon_score: float = -1.0
+        self._last_frame_seq = 0
         self._tracking_paused_for_absence = False
         self._absence_started_at: datetime | None = None
         self._auto_schedule_enabled = True
@@ -89,7 +91,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._run_onboarding_if_needed()
         self._setup_tray_menu()
         self._show_onboarding_handoff()
-        self._scheduler.schedule("frame", 100, self._update_tracking)
+        self._sync_processing_rate()
         self._scheduler.schedule("interval", 1000, self._check_interval)
         self._setup_signal_handling()
 
@@ -305,6 +307,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         if self.video_window and not keep_dashboard:
             self.video_window.close()
             self.video_window = None
+            self._sync_processing_rate()
         self.toggle_dashboard_action.setText(
             "Hide Dashboard" if self.video_window else "Show Dashboard"
         )
@@ -312,11 +315,18 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.setToolTip("BatesPosture — idle")
         logger.info("Tracking stopped")
 
+    def _sync_processing_rate(self) -> None:
+        """Run the full frame rate only while a dashboard is showing frames."""
+        self._camera_service.set_background(self.video_window is None)
+        interval_ms = max(1, 1000 // self._camera_service.effective_fps)
+        self._scheduler.schedule("frame", interval_ms, self._update_tracking)
+
     def toggle_dashboard(self) -> None:
         if self.video_window:
             self.video_window.close()
             self.video_window = None
             self.toggle_dashboard_action.setText("Show Dashboard")
+            self._sync_processing_rate()
         else:
             profile = self._settings.profile
             history = None
@@ -356,6 +366,7 @@ class PostureTrackerTray(QSystemTrayIcon):
                 self.video_window.set_tracking_state("starting")
             self.video_window.show()
             self.toggle_dashboard_action.setText("Hide Dashboard")
+            self._sync_processing_rate()
 
     def _on_dashboard_closed(self) -> None:
         if self._database and isinstance(self.video_window, PostureDashboard):
@@ -370,15 +381,15 @@ class PostureTrackerTray(QSystemTrayIcon):
             self._database.save_dashboard_history(pairs)
         self.video_window = None
         self.toggle_dashboard_action.setText("Show Dashboard")
+        self._sync_processing_rate()
 
     def _update_tracking(self) -> None:
         if not self.tracking_enabled:
             return
-        frame, score = self._camera_service.get_latest_frame()
-        if frame is None:
+        seq, frame, score, results_bundle = self._camera_service.get_latest()
+        if frame is None or seq == self._last_frame_seq:
             return
-
-        results_bundle = self._camera_service.get_latest_pose_results()
+        self._last_frame_seq = seq
 
         if not isinstance(results_bundle, PoseDetectionResult):
             self._handle_absent_human(frame)
@@ -407,8 +418,8 @@ class PostureTrackerTray(QSystemTrayIcon):
         self._update_tooltip(average_score)
 
         if isinstance(self.video_window, PostureDashboard):
-            self.video_window.update_frame(frame)
             self.video_window.update_score(average_score, metrics, stats)
+            self.video_window.update_frame(frame, results_bundle.points)
 
     def _handle_absent_human(self, frame) -> None:
         """Debounce missing-human frames before pausing the active session."""
@@ -661,6 +672,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             self._camera_service.reload_settings()
             self._detector.reload()
             self._scores.reload(self._settings)
+        self._sync_processing_rate()
 
     def _sync_database_logging_state(self) -> None:
         enabled = self._settings.runtime.enable_database_logging
