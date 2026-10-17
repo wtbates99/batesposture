@@ -168,6 +168,8 @@ QLabel {{ color: {c.text}; background: transparent; font-size: 13px; }}
 QLabel#brandName {{ color: {c.text}; font-size: 24px; font-weight: 700; }}
 QLabel#heroText {{ color: {c.text}; font-size: 15px; font-weight: 600; }}
 QLabel#supportText {{ color: {c.muted}; }}
+QLabel#framingStatus {{ color: {c.accent}; font-weight: 600; }}
+QLabel#framingStatus[warn="true"] {{ color: {c.highlight}; }}
 QLabel#cameraPreview {{ background: #101411; color: {c.muted}; border: 1px solid {c.border}; border-radius: 8px; }}
 QLabel#resultPanel {{ background: {c.accent_soft}; border: 1px solid {c.border}; border-radius: 8px; padding: 10px; }}
 QProgressBar {{ background: {c.surface_alt}; border: 1px solid {c.border}; border-radius: 6px; min-height: 12px; text-align: center; color: {c.text}; }}

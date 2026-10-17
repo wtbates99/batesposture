@@ -266,10 +266,14 @@ class VideoView(QWidget):
     coloured by the component it measures, so the overlay shows *why* the
     score moved. The view fills its rect and frames the person's head and
     shoulders. The frame is wrapped as a BGR QImage without copying.
+
+    With ``auto_frame=False`` the whole frame is letterboxed instead, for when
+    the person needs to see exactly what the camera sees.
     """
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, auto_frame: bool = True) -> None:
         super().__init__(parent)
+        self._auto_frame = auto_frame
         self._frame: np.ndarray | None = None
         self._image: QImage | None = None
         self._points: np.ndarray | None = None
@@ -307,6 +311,8 @@ class VideoView(QWidget):
 
     def _desired_crop(self, w: int, h: int) -> QRectF:
         points = self._points
+        if not self._auto_frame:
+            return QRectF(0, 0, w, h)
         if points is None:
             crop_h, cx, cy = float(h), w / 2, h / 2
         else:
@@ -340,12 +346,23 @@ class VideoView(QWidget):
             )
         self._crop_at = now
 
-    def _to_widget(self, crop: QRectF, x: float, y: float) -> QPointF:
+    def _to_widget(self, crop: QRectF, target: QRectF, x: float, y: float) -> QPointF:
         image = self._image
         return QPointF(
-            (x * image.width() - crop.x()) / crop.width() * self.width(),
-            (y * image.height() - crop.y()) / crop.height() * self.height(),
+            target.x() + (x * image.width() - crop.x()) / crop.width() * target.width(),
+            target.y()
+            + (y * image.height() - crop.y()) / crop.height() * target.height(),
         )
+
+    def _target(self) -> QRectF:
+        """Where the image lands: the whole view, or letterboxed when not framing."""
+        if self._auto_frame:
+            return QRectF(self.rect())
+        scale = min(
+            self.width() / self._image.width(), self.height() / self._image.height()
+        )
+        w, h = self._image.width() * scale, self._image.height() * scale
+        return QRectF((self.width() - w) / 2, (self.height() - h) / 2, w, h)
 
     def paintEvent(self, event):  # noqa: N802
         painter = QPainter(self)
@@ -358,24 +375,27 @@ class VideoView(QWidget):
         painter.fillPath(frame_path, QColor("#101411"))
         painter.setClipPath(frame_path)
         if self._image is not None and self._crop is not None:
-            # Re-fit to the current aspect in case the widget was just resized
-            crop = _fit(
-                self._crop, self._aspect(), self._image.width(), self._image.height()
-            )
-            painter.drawImage(QRectF(self.rect()), self._image, crop)
+            crop = self._crop
+            if self._auto_frame:
+                # Re-fit to the current aspect in case the widget was just resized
+                crop = _fit(
+                    crop, self._aspect(), self._image.width(), self._image.height()
+                )
+            target = self._target()
+            painter.drawImage(target, self._image, crop)
             if self._points is not None:
-                self._draw_skeleton(painter, crop)
+                self._draw_skeleton(painter, crop, target)
         painter.setClipping(False)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(QPen(self._border, 1.0))
         painter.drawPath(frame_path)
 
-    def _draw_skeleton(self, painter: QPainter, crop: QRectF) -> None:
+    def _draw_skeleton(self, painter: QPainter, crop: QRectF, target: QRectF) -> None:
         points = self._points
 
         def _at(*indices: int) -> QPointF:
             x, y = points[list(indices), :2].mean(axis=0)
-            return self._to_widget(crop, x, y)
+            return self._to_widget(crop, target, x, y)
 
         nose = _at(PoseLandmark.NOSE)
         left_ear, right_ear = _at(PoseLandmark.LEFT_EAR), _at(PoseLandmark.RIGHT_EAR)

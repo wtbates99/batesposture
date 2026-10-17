@@ -32,7 +32,6 @@ SCORE_THRESHOLD_DEFAULT: int = 65
 DEFAULT_POSTURE_WEIGHTS: tuple[float, ...] = (0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05)
 BREAK_REMINDER_MINUTES: int = 50
 CALIBRATION_DURATION_SECONDS: int = 6
-CALIBRATION_TIMEOUT_MARGIN_SECONDS: int = 6
 
 LEGACY_USER_SETTINGS_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../user_settings.json")

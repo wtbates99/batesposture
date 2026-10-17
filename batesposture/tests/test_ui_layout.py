@@ -98,10 +98,43 @@ def test_calibration_progress_reports_detection_state(qapp, tmp_path):
     settings = SettingsService.for_testing(tmp_path / "calibration_progress.ini")
     page = CalibrationPage(settings)
 
-    page._update_progress(50, 3, False)
+    page._update_progress(50, 3, "Move back so both shoulders are in view")
 
     assert page.progress_bar.value() == 50
-    assert "No posture detected" in page.status_label.text()
+    assert "3s remaining" in page.status_label.text()
+    assert "shoulders" in page.status_label.text()
+
+
+def test_framing_hint_requires_head_and_shoulders_in_view():
+    import numpy as np
+
+    from ..ml.mediapipe_compat import PoseLandmark
+    from ..ui.onboarding import framing_hint
+
+    points = np.full((33, 3), 0.5)
+    points[PoseLandmark.LEFT_EAR, :2] = (0.55, 0.3)
+    points[PoseLandmark.RIGHT_EAR, :2] = (0.45, 0.3)
+    points[PoseLandmark.LEFT_SHOULDER, :2] = (0.7, 0.6)
+    points[PoseLandmark.RIGHT_SHOULDER, :2] = (0.3, 0.6)
+    assert framing_hint(points) == ""
+    assert "Looking for you" in framing_hint(None)
+
+    points[PoseLandmark.LEFT_SHOULDER, 0] = 1.08
+    assert "shoulders" in framing_hint(points)
+    points[PoseLandmark.LEFT_SHOULDER, 0] = 0.7
+    points[PoseLandmark.LEFT_EAR, 1] = -0.02
+    assert "head" in framing_hint(points)
+
+
+def test_calibration_start_waits_for_good_framing(qapp, tmp_path):
+    settings = SettingsService.for_testing(tmp_path / "calibration_framing.ini")
+    page = CalibrationPage(settings)
+
+    page.preview.framing_changed.emit("Move back so both shoulders are in view")
+    assert not page.start_button.isEnabled()
+    assert "shoulders" in page.status_label.text()
+    page.preview.framing_changed.emit("")
+    assert page.start_button.isEnabled()
 
 
 def test_settings_camera_picker_only_shows_verified_ids(qapp, tmp_path):
@@ -186,3 +219,34 @@ def test_resolution_presets_keep_custom_value(qapp, tmp_path):
     assert dialog.resolution_combo.currentData() == (800, 600)
     dialog.resolution_combo.setCurrentIndex(1)
     assert dialog.resolution_combo.currentData() == (1280, 720)
+
+
+def test_calibration_averages_only_well_framed_preview_samples(qapp, tmp_path):
+    import numpy as np
+
+    from ..ml.mediapipe_compat import PoseLandmark
+    from ..ml.pose_detector import PoseDetectionResult
+
+    settings = SettingsService.for_testing(tmp_path / "calibration_samples.ini")
+    page = CalibrationPage(settings)
+    page.preview.start = lambda: None  # no camera in tests
+    points = np.full((33, 3), 0.5)
+    points[[PoseLandmark.LEFT_EAR, PoseLandmark.RIGHT_EAR], 1] = 0.3
+    cut_off = points.copy()
+    cut_off[PoseLandmark.LEFT_SHOULDER, 0] = 1.1
+
+    def sample(score, pts):
+        metrics = {"posture_score": score, "neck_angle": 10.0}
+        return PoseDetectionResult(None, metrics, pts)
+
+    page._begin_calibration()
+    page.preview.sampled.emit(sample(80.0, points))
+    page.preview.sampled.emit(sample(20.0, cut_off))
+    page.preview.sampled.emit(None)
+    page.preview.sampled.emit(sample(70.0, points))
+    page._finish_calibration()
+
+    result = page.metrics()
+    assert result.sample_count == 2
+    assert result.posture_score == pytest.approx(75.0)
+    assert page.isComplete() and page.start_button.isEnabled()
