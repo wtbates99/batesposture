@@ -178,4 +178,5 @@ QPushButton {{ background: {c.surface}; color: {c.text}; border: 1px solid {c.bo
 QPushButton:hover {{ background: {c.surface_alt}; }}
 QPushButton#primaryButton {{ background: {c.accent}; color: #ffffff; border-color: {c.accent}; }}
 QPushButton#primaryButton:hover {{ background: {c.accent_hover}; }}
+QPushButton:disabled, QPushButton#primaryButton:disabled {{ background: {c.surface_alt}; color: {c.muted}; border-color: {c.border}; }}
 """

@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QPainter, QPalette, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -26,7 +26,7 @@ from ..services.settings_service import (
     SettingsService,
 )
 from .dashboard import VideoView
-from .theme import wizard_stylesheet
+from .theme import theme_colors, wizard_stylesheet
 
 
 @dataclass
@@ -495,7 +495,31 @@ class OnboardingWizard(QWizard):
         self.button(QWizard.WizardButton.FinishButton).setText(
             self.tr("Finish & start tracking")
         )
-        self.setStyleSheet(wizard_stylesheet(settings_service.profile.preferred_theme))
+        theme = settings_service.profile.preferred_theme
+        self.setStyleSheet(wizard_stylesheet(theme))
+        self._header_color = QColor(theme_colors(theme).canvas)
+
+    def showEvent(self, event):  # noqa: N802 - Qt override
+        super().showEvent(event)
+        self._theme_header()
+
+    def _theme_header(self) -> None:
+        """Paint the page-title header in the theme colour.
+
+        The header is a private plain QWidget, created lazily, that fills with
+        the Base colour. Neither the stylesheet nor the wizard's palette reaches
+        it, so it stays white in dark mode unless recoloured directly.
+        """
+        color = self._header_color
+        for widget in self.findChildren(QWidget):
+            if (
+                type(widget) is QWidget
+                and widget.autoFillBackground()
+                and widget.backgroundRole() == QPalette.ColorRole.Base
+            ):
+                palette = widget.palette()
+                palette.setColor(QPalette.ColorRole.Base, color)
+                widget.setPalette(palette)
 
     def accept(self) -> None:
         metrics = self.calibration_page.metrics()
@@ -521,6 +545,7 @@ class OnboardingWizard(QWizard):
         if self._last_page_id == self._camera_page_id and self.camera_page is not None:
             self.camera_page.stop_preview()
         self._last_page_id = page_id
+        self._theme_header()
 
 
 def run_onboarding_if_needed(

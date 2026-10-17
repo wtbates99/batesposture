@@ -250,3 +250,27 @@ def test_calibration_averages_only_well_framed_preview_samples(qapp, tmp_path):
     assert result.sample_count == 2
     assert result.posture_score == pytest.approx(75.0)
     assert page.isComplete() and page.start_button.isEnabled()
+
+
+def test_onboarding_header_follows_dark_theme(qapp, tmp_path):
+    from PyQt6.QtGui import QPalette
+    from PyQt6.QtWidgets import QWidget
+
+    settings = SettingsService.for_testing(tmp_path / "wizard_header.ini")
+    settings.update_profile(preferred_theme="dark")
+    wizard = OnboardingWizard(settings)
+    wizard.show()
+    qapp.processEvents()
+    headers = [
+        w
+        for w in wizard.findChildren(QWidget)
+        if type(w) is QWidget
+        and w.autoFillBackground()
+        and w.backgroundRole() == QPalette.ColorRole.Base
+    ]
+    assert headers
+    assert all(
+        h.palette().color(QPalette.ColorRole.Base).name() == DARK.canvas
+        for h in headers
+    )
+    wizard.reject()
