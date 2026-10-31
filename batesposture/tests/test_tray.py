@@ -45,6 +45,9 @@ class DummyCameraService:
         self.latest_frame = None
         self.latest_score = 0.0
         self.latest_pose_results = None
+        self.background = True
+        self.seq = 0
+        self.fixed_seq = None
 
     @contextmanager
     def pause_processing(self):
@@ -53,17 +56,25 @@ class DummyCameraService:
     def reload_settings(self) -> None:
         self.reload_calls += 1
 
-    def start(self, callback=None) -> bool:
+    def start(self, callback=None, on_processed=None, on_failed=None) -> bool:
         return True
 
     def stop(self) -> None:
         return None
 
-    def get_latest_frame(self):
-        return self.latest_frame, self.latest_score
+    def set_background(self, background: bool) -> None:
+        self.background = background
 
-    def get_latest_pose_results(self):
-        return self.latest_pose_results
+    def get_latest(self):
+        # Every poll sees a new frame unless a test pins the sequence number
+        if self.fixed_seq is None:
+            self.seq += 1
+        return (
+            self.fixed_seq or self.seq,
+            self.latest_frame,
+            self.latest_score,
+            self.latest_pose_results,
+        )
 
 
 class DummyScoreService:
@@ -93,6 +104,9 @@ class DummyScoreService:
     def add_score(self, score: float) -> None:
         self.added_scores.append(score)
 
+    def trend_points(self):
+        return list(self.added_scores)
+
     def average_and_stats(self):
         latest = self.added_scores[-1] if self.added_scores else 0.0
         return latest, {
@@ -116,10 +130,15 @@ class DummyNotificationService:
     def maybe_notify_trend(self, score_service) -> None:
         return None
 
+    snooze_remaining_s = 0.0
+
+    def snooze(self, seconds: float) -> None:
+        self.snooze_remaining_s = float(seconds)
+
 
 def _build_tray(tmp_path, monkeypatch):
     monkeypatch.setattr(tray_module, "run_onboarding_if_needed", lambda settings: False)
-    monkeypatch.setattr(tray_module, "create_score_icon", lambda score: QIcon())
+    monkeypatch.setattr(tray_module, "create_score_icon", lambda *a, **k: QIcon())
     monkeypatch.setattr(
         tray_module.PostureTrackerTray, "_setup_signal_handling", lambda self: None
     )
@@ -346,3 +365,101 @@ def test_scheduled_stop_keeps_dashboard_with_countdown(qapp, tmp_path, monkeypat
     dashboard.close()
     tray.video_window = None
     tray.hide()
+
+
+def test_same_camera_frame_is_scored_only_once(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    tray.tracking_enabled = True
+    camera.fixed_seq = 7
+    camera.latest_frame = object()
+    camera.latest_score = 80.0
+    camera.latest_pose_results = PoseDetectionResult(
+        SimpleNamespace(pose_landmarks=True), {"posture_score": 80.0}
+    )
+
+    tray._update_tracking()
+    tray._update_tracking()
+
+    assert scores.added_scores == [80.0]
+
+
+def test_camera_runs_full_rate_only_while_dashboard_is_open(
+    qapp, tmp_path, monkeypatch
+):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    assert camera.background is True
+
+    tray.toggle_dashboard()
+    assert camera.background is False
+
+    tray.toggle_dashboard()
+    assert camera.background is True
+
+
+def test_minimized_dashboard_drops_camera_to_background_rate(
+    qapp, tmp_path, monkeypatch
+):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    tray.toggle_dashboard()
+    assert camera.background is False
+
+    tray.video_window.showMinimized()
+    qapp.processEvents()
+
+    assert camera.background is True
+    tray.toggle_dashboard()
+
+
+def test_camera_failure_stops_tracking_and_shows_error(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    messages = []
+    monkeypatch.setattr(tray, "showMessage", lambda title, *a: messages.append(title))
+    tray._start_tracking()
+    tray.toggle_dashboard()
+    assert tray.tracking_enabled
+
+    tray.camera_failed.emit()
+
+    assert not tray.tracking_enabled
+    assert messages == ["Camera unavailable"]
+    assert "Camera unavailable" in tray.video_window.subtitle.text()
+    tray.toggle_dashboard()
+
+
+def test_popover_reflects_tracking_state_and_snooze(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    tray._refresh_popover()
+    assert tray.popover.headline.text() == "Setup needed"  # onboarding skipped
+
+    tray._onboarding_cancelled = False
+    tray._refresh_popover()
+    assert tray.popover.headline.text() == "Not tracking"
+    assert tray.popover.tracking_button.text() == "Start tracking"
+
+    tray._start_tracking()
+    camera.latest_frame = object()
+    camera.latest_score = 82.0
+    camera.latest_pose_results = PoseDetectionResult(
+        SimpleNamespace(pose_landmarks=True), {"posture_score": 82.0}
+    )
+    tray._update_tracking()
+    tray._refresh_popover()
+    assert tray.popover.headline.text() == "Good posture"
+    assert tray.popover.ring.score == 82.0
+    assert tray.popover.tracking_button.text() == "Pause tracking"
+
+    tray._toggle_snooze()
+    tray._refresh_popover()
+    assert tray.snooze_action.isChecked()
+    assert "snoozed" in tray.popover.snooze_button.text()
+
+
+def test_popover_opens_on_click_and_closes_on_second_click(qapp, tmp_path, monkeypatch):
+    tray, settings, detector, camera, scores = _build_tray(tmp_path, monkeypatch)
+    trigger = tray_module.QSystemTrayIcon.ActivationReason.Trigger
+
+    tray._on_activated(trigger)
+    assert tray.popover.isVisible()
+
+    tray._on_activated(trigger)
+    assert not tray.popover.isVisible()
