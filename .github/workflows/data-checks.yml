@@ -75,7 +75,7 @@ jobs:
           assert not missing, f'Missing wheel resources: {sorted(missing)}'"
 
       - name: Check PR title
-        if: runner.os == 'Linux' && github.event_name == 'pull_request'
+        if: runner.os == 'Linux' && github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: uv run python .github/workflows/title_check.py $(pwd) "$PR_TITLE"
