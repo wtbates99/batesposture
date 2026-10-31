@@ -5,7 +5,7 @@
 **A local-first desktop posture monitor. Webcam in, private posture feedback out.**
 
 [![Checks](https://github.com/wtbates99/batesposture/actions/workflows/data-checks.yml/badge.svg)](https://github.com/wtbates99/batesposture/actions/workflows/data-checks.yml)
-[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![MediaPipe](https://img.shields.io/badge/pose-MediaPipe-e07830)](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-c9a84c)](LICENSE)
 
@@ -37,7 +37,7 @@ cloud uploads, or telemetry.
 
 ## Install
 
-Requires Python 3.10 or newer, [uv](https://docs.astral.sh/uv/), and a webcam.
+Requires Python 3.11 or newer, [uv](https://docs.astral.sh/uv/), and a webcam.
 
 ```bash
 git clone https://github.com/wtbates99/batesposture.git
