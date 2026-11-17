@@ -35,7 +35,10 @@ def score_service(settings):
 
 @pytest.fixture
 def notification_service(settings):
-    return NotificationService(settings, "/mock/icon.png")
+    service = NotificationService(settings, "/mock/icon.png")
+    # Alert immediately; the sustained-poor delay is covered by unit tests.
+    service.SUSTAINED_POOR_S = 0.0
+    return service
 
 
 @pytest.fixture

@@ -32,7 +32,6 @@ SCORE_THRESHOLD_DEFAULT: int = 65
 DEFAULT_POSTURE_WEIGHTS: tuple[float, ...] = (0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05)
 BREAK_REMINDER_MINUTES: int = 50
 CALIBRATION_DURATION_SECONDS: int = 6
-CALIBRATION_TIMEOUT_MARGIN_SECONDS: int = 6
 
 LEGACY_USER_SETTINGS_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../user_settings.json")
@@ -142,7 +141,7 @@ class ResourceSettings:
 @dataclass
 class RuntimeSettings:
     default_camera_id: int = 0
-    default_fps: int = 30
+    default_fps: int = 15
     frame_width: int = 1280
     frame_height: int = 720
     notification_cooldown: int = 300
@@ -157,7 +156,6 @@ class RuntimeSettings:
     db_write_interval_seconds: int = 900
     notifications_enabled: bool = True
     focus_mode_enabled: bool = False
-    adaptive_resolution: bool = False
 
 
 @dataclass
@@ -606,7 +604,6 @@ LEGACY_KEY_TO_SECTION_FIELD: dict[str, tuple[str, str]] = {
     "DB_WRITE_INTERVAL_SECONDS": ("runtime", "db_write_interval_seconds"),
     "NOTIFICATIONS_ENABLED": ("runtime", "notifications_enabled"),
     "FOCUS_MODE_ENABLED": ("runtime", "focus_mode_enabled"),
-    "ADAPTIVE_RESOLUTION": ("runtime", "adaptive_resolution"),
     "HAS_COMPLETED_ONBOARDING": ("profile", "has_completed_onboarding"),
     "BASELINE_POSTURE_SCORE": ("profile", "baseline_posture_score"),
     "BASELINE_NECK_ANGLE": ("profile", "baseline_neck_angle"),

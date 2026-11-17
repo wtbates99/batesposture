@@ -13,7 +13,7 @@
 
 </div>
 
-![BatesPosture live dashboard: pose landmarks over a staged camera preview, an 86% score, the two-minute trend with a recovered slump, and session stats](docs/assets/dashboard.png)
+![BatesPosture on a Mac desktop: the menu-bar popover with an 82 score ring, a ten-minute trend and Pause, Dashboard and Snooze controls, open over the live dashboard showing a colour-coded posture skeleton on a staged camera preview, a per-measurement breakdown, the two-minute trend and the session summary](docs/assets/hero.jpg)
 
 BatesPosture watches a webcam locally, scores posture from 0–100, and sends a
 native notification when posture drops below a personal threshold. Calibration
@@ -24,16 +24,26 @@ cloud uploads, or telemetry.
 
 | Capability | Behavior |
 | --- | --- |
-| Live score | Seven weighted pose metrics become a color-coded 0–100 tray score |
-| Personal calibration | A six-second baseline adjusts feedback to the user's natural posture |
-| Session dashboard | History, average, minimum, maximum, best streak, and duration |
-| Smart alerts | Native notifications with threshold, cooldown, and focus controls |
+| Live score | Weighted head, neck, shoulder and spine measurements become one 0–100 score |
+| Menu-bar popover | Score ring, ten-minute trend, and pause, dashboard and snooze controls one click from the menu bar |
+| Personal calibration | A six-second baseline, taken only once head and shoulders are in frame |
+| Session dashboard | Auto-framed camera view, colour-coded skeleton, per-measurement breakdown, trend, average and best streak |
+| Calm alerts | Notify only after sustained poor posture, with cooldown, focus mode and a one-hour snooze |
 | Scheduling | Continuous or interval tracking plus configurable break reminders |
 | Local history | Optional SQLite logging and CSV export |
-| Adaptive processing | Frame-size and performance controls for slower hardware |
+| Light on the CPU | 2 FPS while the dashboard is closed, and no pose inference while you sit still |
 | Auto-pause | Away-from-desk time is excluded when no person is detected |
 
-![BatesPosture calibration mid-capture: staged camera preview with pose landmarks, progress bar, and person-detected status](docs/assets/onboarding.png)
+### In the menu bar
+
+A template icon that matches the menu bar until posture needs attention, and a
+popover with the score, recent trend and the controls used day to day.
+
+![The menu-bar popover in light and dark: a good-posture 82 with a steady trend, and a 54 with the tray icon turned red after a slump below the alert line](docs/assets/menubar.png)
+
+### Live dashboard
+
+![BatesPosture live dashboard: a colour-coded posture skeleton over a staged camera preview, a 78 score with a per-measurement breakdown, the two-minute trend with a recovered slump, and the session summary](docs/assets/dashboard.png)
 
 ## Install
 
@@ -68,11 +78,15 @@ GNOME users may also need an AppIndicator extension for the tray icon.
 
 ## How it works
 
+<img align="right" width="320" alt="Calibration mid-capture: the staged camera preview with a live skeleton, three seconds remaining and a progress bar" src="docs/assets/onboarding.png">
+
 1. **Calibrate** — capture a six-second baseline of the user's natural posture.
 2. **Track** — MediaPipe landmarks feed seven geometric measurements.
 3. **Score** — weighted measurements produce one 0–100 posture score.
 4. **Alert** — a sustained low score triggers a cooldown-controlled notification.
 5. **Review** — the dashboard shows the current session and optional saved history.
+
+<br clear="right">
 
 ## Configuration
 
@@ -118,7 +132,8 @@ uv build
 
 - **Camera does not open:** close other camera applications or try camera index `1`.
 - **Tracking pauses:** make sure the head and shoulders are visible and evenly lit.
-- **Performance is poor:** lower FPS or frame size and enable adaptive resolution.
+- **Performance is poor:** choose the Lite model; with the dashboard closed tracking already
+  drops to 2 FPS.
 - **CSV export is empty:** enable database logging before recording a session.
 
 ## License

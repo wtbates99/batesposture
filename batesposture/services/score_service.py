@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 import threading
+from collections import deque
 from time import monotonic
 
 import numpy as np
@@ -32,6 +34,14 @@ class ScoreService:
         # Streak: consecutive seconds the rolling average has been above threshold
         self._streak_start: float | None = None
         self._best_streak_s: float = 0.0
+        # Running session totals — O(1) per score and independent of buffer size
+        self._session_count = 0
+        self._session_sum = 0.0
+        self._session_min = math.inf
+        self._session_max = -math.inf
+        # Per-second [second, sum, count] buckets for trend detection; covers
+        # ten minutes regardless of how fast scores arrive
+        self._trend: deque[list[float]] = deque(maxlen=600)
 
     @property
     def threshold(self) -> int:
@@ -77,6 +87,10 @@ class ScoreService:
             self._paused_duration_s = 0.0
             self._streak_start = None
             self._best_streak_s = 0.0
+            self._session_count = 0
+            self._session_sum = 0.0
+            self._session_min = math.inf
+            self._session_max = -math.inf
 
     def mark_absent(self) -> None:
         """Called when no human is detected in frame.
@@ -117,6 +131,16 @@ class ScoreService:
             self._current_index = (self._current_index + 1) % self._buffer_size
             if self._current_index == 0:
                 self._is_full = True
+            self._session_count += 1
+            self._session_sum += score
+            self._session_min = min(self._session_min, score)
+            self._session_max = max(self._session_max, score)
+            second = math.floor(current_time)
+            if self._trend and self._trend[-1][0] == second:
+                self._trend[-1][1] += score
+                self._trend[-1][2] += 1
+            else:
+                self._trend.append([second, score, 1])
             self._update_streak_unsafe(score)
 
     def _end_streak_unsafe(self) -> None:
@@ -179,114 +203,62 @@ class ScoreService:
         younger than the baseline offset).
         """
         with self._lock:
-            if not self._is_full and self._current_index == 0:
+            if not self._trend:
                 return None
-            now = monotonic()
-            if self._is_full:
-                ts = self._timestamps
-                sc = self._scores
-            else:
-                ts = self._timestamps[: self._current_index]
-                sc = self._scores[: self._current_index]
-            age = now - ts
-            recent_mask = (age >= 0) & (age <= recent_s)
-            baseline_mask = (age > baseline_offset_s) & (
-                age <= baseline_offset_s + baseline_s
-            )
-            if not recent_mask.any() or not baseline_mask.any():
-                return None
-            return float(np.mean(sc[baseline_mask]) - np.mean(sc[recent_mask]))
+            buckets = np.array(self._trend, dtype=np.float64)
+        age = monotonic() - buckets[:, 0]
+        recent_mask = (age >= 0) & (age <= recent_s)
+        baseline_mask = (age > baseline_offset_s) & (
+            age <= baseline_offset_s + baseline_s
+        )
+        if not recent_mask.any() or not baseline_mask.any():
+            return None
+
+        def _mean(mask: np.ndarray) -> float:
+            return buckets[mask, 1].sum() / buckets[mask, 2].sum()
+
+        return float(_mean(baseline_mask) - _mean(recent_mask))
+
+    def trend_points(self, seconds: int = 600, max_points: int = 60) -> list[float]:
+        """Return recent per-second means, binned to at most ``max_points``."""
+        with self._lock:
+            if not self._trend:
+                return []
+            buckets = np.array(self._trend, dtype=np.float64)
+        buckets = buckets[buckets[:, 0] > monotonic() - seconds]
+        if not len(buckets):
+            return []
+        bins = np.array_split(buckets, min(max_points, len(buckets)))
+        return [float(b[:, 1].sum() / b[:, 2].sum()) for b in bins]
 
     def average_and_stats(self) -> tuple:
         """Return (rolling_average, session_stats_dict) in a single lock acquisition."""
         with self._lock:
-            avg = self._average_unsafe()
-            if not self._is_full and self._current_index == 0:
-                return avg, {
-                    "count": 0,
-                    "avg": 0.0,
-                    "min": 0.0,
-                    "max": 0.0,
-                    "duration_s": 0.0,
-                    "best_streak_s": 0.0,
-                    "current_streak_s": 0.0,
-                }
-            cutoff = self._session_start if self._session_start is not None else 0.0
-            if self._is_full:
-                mask = self._timestamps >= cutoff
-                scores = self._scores[mask]
-            else:
-                ts_slice = self._timestamps[: self._current_index]
-                sc_slice = self._scores[: self._current_index]
-                scores = sc_slice[ts_slice >= cutoff]
-            if len(scores) == 0:
-                return avg, {
-                    "count": 0,
-                    "avg": 0.0,
-                    "min": 0.0,
-                    "max": 0.0,
-                    "duration_s": 0.0,
-                    "best_streak_s": 0.0,
-                    "current_streak_s": 0.0,
-                }
-            duration = self._session_duration_unsafe()
-            best = max(self._best_streak_s, self._current_streak_s_unsafe())
-            current = self._current_streak_s_unsafe()
-            return avg, {
-                "count": int(len(scores)),
-                "avg": float(round(np.mean(scores), 1)),
-                "min": float(round(np.min(scores), 1)),
-                "max": float(round(np.max(scores), 1)),
-                "duration_s": round(duration, 1),
-                "best_streak_s": round(best, 1),
-                "current_streak_s": round(current, 1),
-            }
+            return self._average_unsafe(), self._session_stats_unsafe()
 
     def session_stats(self) -> dict:
         """Return stats for all scores collected since the session started."""
         with self._lock:
-            if not self._is_full and self._current_index == 0:
-                return {
-                    "count": 0,
-                    "avg": 0.0,
-                    "min": 0.0,
-                    "max": 0.0,
-                    "duration_s": 0.0,
-                    "best_streak_s": 0.0,
-                    "current_streak_s": 0.0,
-                }
+            return self._session_stats_unsafe()
 
-            cutoff = self._session_start if self._session_start is not None else 0.0
-
-            if self._is_full:
-                mask = self._timestamps >= cutoff
-                scores = self._scores[mask]
-            else:
-                ts_slice = self._timestamps[: self._current_index]
-                sc_slice = self._scores[: self._current_index]
-                mask = ts_slice >= cutoff
-                scores = sc_slice[mask]
-
-            if len(scores) == 0:
-                return {
-                    "count": 0,
-                    "avg": 0.0,
-                    "min": 0.0,
-                    "max": 0.0,
-                    "duration_s": 0.0,
-                    "best_streak_s": 0.0,
-                    "current_streak_s": 0.0,
-                }
-
-            duration = self._session_duration_unsafe()
-            best = max(self._best_streak_s, self._current_streak_s_unsafe())
-            current = self._current_streak_s_unsafe()
+    def _session_stats_unsafe(self) -> dict:
+        if self._session_count == 0:
             return {
-                "count": int(len(scores)),
-                "avg": float(round(np.mean(scores), 1)),
-                "min": float(round(np.min(scores), 1)),
-                "max": float(round(np.max(scores), 1)),
-                "duration_s": round(duration, 1),
-                "best_streak_s": round(best, 1),
-                "current_streak_s": round(current, 1),
+                "count": 0,
+                "avg": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "duration_s": 0.0,
+                "best_streak_s": 0.0,
+                "current_streak_s": 0.0,
             }
+        current = self._current_streak_s_unsafe()
+        return {
+            "count": self._session_count,
+            "avg": round(self._session_sum / self._session_count, 1),
+            "min": round(self._session_min, 1),
+            "max": round(self._session_max, 1),
+            "duration_s": round(self._session_duration_unsafe(), 1),
+            "best_streak_s": round(max(self._best_streak_s, current), 1),
+            "current_streak_s": round(current, 1),
+        }
